@@ -27,6 +27,8 @@ var (
 	ErrNotInit = errors.New("boxli/runtime: 当前进程不是容器 init")
 	// ErrBadConfig 表示启动配置非法。
 	ErrBadConfig = errors.New("boxli/runtime: 配置非法")
+	// ErrNotRoot 表示当前进程既非 root 又未显式允许 rootless（启动/exec 需特权）。
+	ErrNotRoot = errors.New("boxli/runtime: 需要 root")
 	// ErrUnsupported 表示本平台尚无运行时后端（非 Linux 文件实现）。
 	ErrUnsupported = errors.New("boxli/runtime: 本平台运行时未实现（阶段 2 仅支持 linux）")
 )
@@ -51,6 +53,25 @@ type StartResult struct {
 	ChildPID int
 	// ExitCode 是容器 1 号进程的退出码（信号死亡时为 128+signum）。
 	ExitCode int
+}
+
+// ExecOptions 描述一次 `boxli exec`：在运行中容器（由 TargetPID 所指 init
+// 的命名空间）里执行命令。跨平台类型；Linux 后端实现。
+type ExecOptions struct {
+	// TargetPID 是容器 init 进程在宿主上的 PID（runtime.json 的 initPid）。
+	TargetPID int
+	// Cmd 是要执行的命令 argv（在容器 mount namespace 内解析，如 /bin/sh）。
+	Cmd []string
+	// Env 是命令环境变量（覆盖容器内环境）。
+	Env []string
+	// Workdir 是工作目录（容器内路径）；空则用 /。
+	Workdir string
+	// User 是 uid[:gid] 运行身份；空则保持当前。
+	User string
+	// Stdin/Stdout/Stderr 透传给命令；nil 时取 os.*。
+	Stdin, Stdout, Stderr *os.File
+	// TTY 表示申请伪终端（-t）。
+	TTY bool
 }
 
 // Validate 检查配置完备性。

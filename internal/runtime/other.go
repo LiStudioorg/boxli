@@ -22,3 +22,8 @@ func Start(_ *Config, _ func(pid int)) (*StartResult, error) {
 func StartWith(_ *Config, _ func(pid int), _ *StartOptions) (*StartResult, error) {
 	return nil, ErrUnsupported
 }
+
+// ExecOptions 是跨平台 exec 参数类型（定义在 exec 主文件，供 CLI 引用）。
+
+// Exec 非 Linux 平台不支持。
+func Exec(_ *ExecOptions) (int, error) { return -1, ErrUnsupported }

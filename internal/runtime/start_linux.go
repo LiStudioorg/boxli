@@ -22,9 +22,6 @@ import (
 	"github.com/LiStudioorg/boxli/internal/resource"
 )
 
-// ErrNotRoot 表示既非 root 又未显式允许 rootless，无法启动容器。
-var ErrNotRoot = errors.New("boxli/runtime: 需要 root，或启用 user namespace（自动于 euid!=0）")
-
 // newCID 生成本次容器实例 ID：宿主 PID + 随机后缀，保证同一 rootfs 上
 // 并发容器的旧根目录名互不冲突。
 func newCID() string {
