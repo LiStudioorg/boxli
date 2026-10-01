@@ -6,16 +6,20 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/spf13/cobra"
 
 	"github.com/LiStudioorg/boxli/internal/runtime"
+	"github.com/LiStudioorg/boxli/internal/shim"
 )
 
 // Version 由 main 注入（可通过 -ldflags 覆盖），用于 --version。
@@ -45,6 +49,7 @@ func NewRootCommand(out, errOut io.Writer) *cobra.Command {
 		newShutdownCommand(out),
 		newInitCommand(out),
 		newSpikeCommand(out),
+		newShimCommand(out),
 	)
 	return root
 }
@@ -56,6 +61,15 @@ func Execute() int {
 	if runtime.IsInitProcess() {
 		if err := runtime.RunInit(); err != nil {
 			fmt.Fprintf(os.Stderr, "boxli init: %v\n", err)
+			return 1
+		}
+		return 0
+	}
+	sigCtx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer cancel()
+	if shim.IsShimProcess() {
+		if err := shim.RunFromEnv(sigCtx); err != nil {
+			fmt.Fprintf(os.Stderr, "boxli shim: %v\n", err)
 			return 1
 		}
 		return 0

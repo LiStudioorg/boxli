@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"syscall"
+	"time"
 )
 
 // ErrNotRoot 表示既非 root 又未显式允许 rootless，无法启动容器。
@@ -31,10 +32,33 @@ func newCID() string {
 	return strconv.Itoa(os.Getpid()) + "." + hex.EncodeToString(b[:])
 }
 
+// StartOptions 是 Start 的可选参数。
+type StartOptions struct {
+	// Stdin/Stdout/Stderr 透传给容器 init；nil 时取 os.Stdin/os.Stdout。
+	Stdin, Stdout, Stderr *os.File
+	// StopCh 非 nil 时：等待期间该通道可读，立即向 init 转发 SIGTERM，
+	// grace 后仍未退出则 SIGKILL（shim 的停止语义由调用方提供信号源）。
+	StopCh <-chan struct{}
+	// Grace 是 SIGTERM 到 SIGKILL 的宽限，默认 10s。
+	Grace time.Duration
+}
+
 // Start 以容器方式重执行当前二进制（/proc/self/exe + `init` 参数），
 // 创建 PID/Mount/UTS/IPC namespace（非 root 追加 USER），等待其退出并返回结果。
 // onChildStart 在子进程启动后、等待前被调用（可传 nil），用于内存采样等观测。
 func Start(cfg *Config, onChildStart func(pid int)) (*StartResult, error) {
+	return StartWith(cfg, onChildStart, nil)
+}
+
+// StartWith 是 Start 的完整形态：支持自定义 stdio 与停止信号转发。
+func StartWith(cfg *Config, onChildStart func(pid int), opts *StartOptions) (*StartResult, error) {
+	if opts == nil {
+		opts = &StartOptions{}
+	}
+	grace := opts.Grace
+	if grace <= 0 {
+		grace = 10 * time.Second
+	}
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -62,7 +86,9 @@ func Start(cfg *Config, onChildStart func(pid int)) (*StartResult, error) {
 
 	cmd := exec.Command("/proc/self/exe", "init")
 	cmd.Env = env
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	cmd.Stdin = firstNonNil(opts.Stdin, os.Stdin)
+	cmd.Stdout = firstNonNil(opts.Stdout, os.Stdout)
+	cmd.Stderr = firstNonNil(opts.Stderr, cmd.Stdout.(*os.File))
 
 	flags := uintptr(syscall.CLONE_NEWPID | syscall.CLONE_NEWNS | syscall.CLONE_NEWUTS | syscall.CLONE_NEWIPC)
 	sys := &syscall.SysProcAttr{Cloneflags: flags}
@@ -84,22 +110,60 @@ func Start(cfg *Config, onChildStart func(pid int)) (*StartResult, error) {
 		onChildStart(cmd.Process.Pid)
 	}
 	res := &StartResult{ChildPID: cmd.Process.Pid}
+	if opts.StopCh != nil {
+		stopDone := make(chan struct{})
+		go func(pid int) {
+			select {
+			case <-opts.StopCh:
+				_ = syscall.Kill(pid, syscall.SIGTERM)
+				timer := time.NewTimer(grace)
+				defer timer.Stop()
+				select {
+				case <-timer.C:
+					_ = syscall.Kill(pid, syscall.SIGKILL)
+				case <-stopDone:
+				}
+			case <-stopDone:
+			}
+		}(cmd.Process.Pid)
+		err := cmd.Wait()
+		close(stopDone)
+		if err != nil {
+			var ee *exec.ExitError
+			if errors.As(err, &ee) {
+				res.ExitCode = normalizeExitCode(ee)
+				return res, nil
+			}
+			return res, fmt.Errorf("等待容器 init 失败: %w", err)
+		}
+		return res, nil
+	}
 	if err := cmd.Wait(); err != nil {
 		var ee *exec.ExitError
 		if errors.As(err, &ee) {
-			code := ee.ExitCode()
-			if code < 0 {
-				// 信号死亡：换算为 128+signum（shell 惯例）。
-				if ws, ok := ee.ProcessState.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
-					code = 128 + int(ws.Signal())
-				} else {
-					code = 1
-				}
-			}
-			res.ExitCode = code
+			res.ExitCode = normalizeExitCode(ee)
 			return res, nil
 		}
 		return res, fmt.Errorf("等待容器 init 失败: %w", err)
 	}
 	return res, nil
+}
+
+// normalizeExitCode 统一退出码语义：正常退出原样返回；信号死亡换算 128+signum。
+func normalizeExitCode(ee *exec.ExitError) int {
+	code := ee.ExitCode()
+	if code >= 0 {
+		return code
+	}
+	if ws, ok := ee.ProcessState.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+		return 128 + int(ws.Signal())
+	}
+	return 1
+}
+
+func firstNonNil(fallback *os.File, def *os.File) *os.File {
+	if fallback != nil {
+		return fallback
+	}
+	return def
 }
