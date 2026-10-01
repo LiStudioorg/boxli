@@ -18,8 +18,8 @@ myapp-1.0.boxli (tar)
 │   ├── 000001.base.tar.gz
 │   ├── 000002.app.tar.gz
 │   └── 000003.conf.tar.gz
-└── blobs/              # 可选：被 index 直接引用的小对象（配置等）
-    └── <digest-algo>-<digest-hex>
+└── blobs/              # 小对象目录，条目名 = <digest-algo>-<digest-hex>
+    └── sha256-9f2c…    # config 指向的 blob（必需；index.config.digest 即其摘要）
 ```
 
 设计原则：
@@ -94,7 +94,7 @@ UTF-8 JSON，无 BOM，允许任意空白，解析器必须容忍键序。Schema
 | `created` | string | ✅ | RFC 3339 UTC，秒精度 |
 | `name` | string | ✅ | 镜像仓库名 `^[a-z0-9][a-z0-9._/-]{0,254}$`，用于默认命名，不作校验锚 |
 | `version` | string | ✅ | 语义化版本或 tag 名，同仓库 tag 规则 |
-| `config` | object | ✅ | 容器运行配置小对象（见 3.3）；`digest`/`sizeBytes` 指向 `blobs/` 或内嵌 |
+| `config` | object | ✅ | 容器运行配置小对象（见 3.3）；`digest`/`sizeBytes` 指向 `blobs/<algo>-<hex>`，该 blob 必需存在 |
 | `layers` | array | ✅ | 1 ≤ len ≤ 127；`applyOrder` 必须恰为 1..n 且 path 唯一 |
 | `layers[].path` | string | ✅ | 归档内相对路径，必须以 `layers/` 开头，禁止 `..`、绝对路径、反斜杠 |
 | `layers[].digest` | string | ✅ | 见 3.2 |
@@ -138,6 +138,7 @@ UTF-8 JSON，无 BOM，允许任意空白，解析器必须容忍键序。Schema
 5. `applyOrder` 不是 1..n 严格递增 → `ErrBadApplyOrder`
 6. `architecture` / `os` 与运行时不匹配且未显式 `--allow-arch-mismatch` → `ErrArchMismatch`（Android 上 `os=linux` 镜像视为兼容）
 7. 层内出现 hardlink 指向 `..` 目标、设备文件、ACL/xattr 扩展位含未知命名空间 → `ErrUnsafeLayer`（设备节点与 setuid 位由 storage 层在解包时统一剥离）
+8. `blobs/<algo>-<hex>` 缺失、大小与 `config.sizeBytes` 不符、内容摘要与 `config.digest` 不符、或不是合法 config JSON → `ErrConfigMissing` / `ErrSizeMismatch` / `ErrDigestMismatch` / `ErrBadManifest`
 
 ## 5. 存储布局（本地）
 
