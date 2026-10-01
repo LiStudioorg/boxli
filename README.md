@@ -10,6 +10,7 @@ Boxli 是一个用 Go 编写的轻量级容器引擎：常驻内存 10–20 MiB�
 - 🏗 **多架构**：amd64 / arm64 / 386 / riscv64 等同一条命令交叉编译。
 - 🔌 **零外部依赖**：不需要 Docker、containerd 或任何 OCI 组件，装一个 `boxli` 就能用。
 - 🛡 **资源限制**：CPU / 内存 / PID 限额内置于引擎。
+- 🚀 **开机自启**：一条 `boxli boot enable` 完成系统服务配置，无全局守护进程，每个容器由轻量 shim 独立守护。
 
 ## 快速开始
 
@@ -21,6 +22,19 @@ boxli run alpine:3.20 -- /bin/sh                     # 进入容器交互终端
 boxli ps                                             # 查看运行中的容器
 boxli exec <容器ID> cat /etc/os-release              # 在运行中的容器里执行命令
 ```
+
+## 开机自启
+
+Boxli 没有常驻守护进程。给容器标记重启策略，再开启系统级自启，重启机器后容器会自动拉起：
+
+```bash
+boxli run -d --restart always myapp:v1   # always / unless-stopped / no（默认）/ on-failure
+boxli boot enable                        # 一键写入并注册系统服务（自动识别平台）
+boxli boot status                        # 查看自启状态与自启容器列表
+boxli boot disable                       # 移除系统服务
+```
+
+开机时系统调用一次 `boxli boot`，拉起 `restart=always` / `unless-stopped` 的容器后立即退出；每个容器由各自的轻量 shim 进程持有生命周期。首次使用 `boxli` 时会引导你开启。
 
 ## 支持平台
 

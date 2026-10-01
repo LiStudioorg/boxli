@@ -56,11 +56,96 @@ boxli/
 
 约定：每个后端实现同一组内部接口，公共层只依赖接口；新平台 = 新 tag + 新文件，不改公共代码。
 
+## 开机自启动机制
+
+Boxli **不采用全局常驻守护进程**。开机自启 = 一个**全局一次性系统服务** + **容器自身的 restart 策略**：
+
+- 系统里只生成**一个** Boxli 服务文件。
+- 开机时系统调用一次 `boxli boot`。
+- `boxli boot` 扫描容器状态文件，拉起设置了自启的容器，**执行完即退出，不常驻**。
+- 每个容器的生命周期由一个轻量 **shim 进程**持有（类似 Podman 的 conmon），引擎本体不常驻。
+
+### 容器自启动标志（restart 策略）
+
+创建容器时指定：
+
+```bash
+boxli run -d --restart always         alice/myapp:v1
+boxli run -d --restart unless-stopped alice/myapp:v1
+boxli run -d --restart no             alice/myapp:v1
+```
+
+| 策略 | 行为 |
+| --- | --- |
+| `no`（默认） | 开机不自动启动 |
+| `always` | 容器退出就重启；开机自动启动 |
+| `unless-stopped` | 类似 always，但用户手动 `stop` 后开机不再拉起 |
+| `on-failure` | 非零退出码才被 shim 重启；**开机不自动启动** |
+
+### 一键配置系统服务（boxli boot enable/disable/status）
+
+用户只需一条命令，无需手写服务文件。`boxli boot enable` 自动检测平台并完成配置：
+
+| 平台 | 服务文件 | 注册方式 |
+| --- | --- | --- |
+| Linux | `/etc/systemd/system/boxli.service` | `systemctl daemon-reload && systemctl enable boxli` |
+| macOS | `~/Library/LaunchAgents/dev.boxli.boot.plist` | `launchctl load` |
+| Android（Root） | `/data/adb/service.d/boxli.sh`（赋执行权限） | Magisk service.d |
+| Android（无 Root） | `~/.termux/boot/boxli.sh` | 检测 Termux:Boot，未安装时提示用户 |
+
+- `boxli boot enable`：写入服务文件并注册，完成后输出服务文件路径与状态。
+- `boxli boot disable`：自动移除对应平台的系统服务文件并取消注册。
+- `boxli boot status`：显示开机自启是否启用、服务类型、服务文件路径；列出所有设置了 `restart=always` / `unless-stopped` 的容器及其状态。
+- `boxli boot`：由系统服务在开机时调用的一次性命令。扫描所有容器状态文件 → 启动 `restart=always` 或 `unless-stopped` 的容器 → 跳过标记 `stopped-by-user` 的 `unless-stopped` 容器 → 每个容器 fork 一个轻量 shim → 退出。
+
+### 首次使用引导
+
+用户首次执行任意 `boxli` 命令时，若检测到未启用开机自启，提示：
+
+```text
+检测到 Boxli 尚未启用开机自启
+是否启用？启用后开机会自动拉起设置了 restart=always 的容器
+[y/N]:
+```
+
+用户确认后自动执行 `boxli boot enable`。默认（直接回车）视为拒绝。
+
+### 停止容器时的状态记录
+
+`boxli stop myapp`：停止容器 → 标记 `stopped-by-user`。下次开机时 `unless-stopped` 的容器不再被拉起；`always` 的容器仍会被拉起（与 Docker 行为一致）。
+
+### systemd 服务文件内容（Linux）
+
+```ini
+[Unit]
+Description=Boxli container engine
+After=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/boxli boot
+ExecStop=/usr/local/bin/boxli shutdown
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### CLI 命令汇总（boot 相关）
+
+```text
+boxli boot enable    启用开机自启
+boxli boot disable   关闭开机自启
+boxli boot status    查看开机自启状态与自启容器列表
+boxli boot           由系统服务在开机时调用，一次性拉起自启容器
+boxli shutdown       由系统服务停止时调用，优雅停止自启容器
+```
+
 ## 代码规矩
 
 - **错误处理**：错误必须包装上下文后再向上返回：`fmt.Errorf("load index: %w", err)`；只在 `main.go` / CLI 出口层打印，中间层只 `return`。忽略错误必须显式 `_ =`。
 - **日志**：统一使用标准库 `log/slog`，结构化字段（`slog.String("container", id)` 等）；禁止 `fmt.Println` 打日志、禁止引入第三方日志库。
-- **CLI**：使用 [cobra](https://github.com/spf13/cobra) 组织命令树（`pull` / `run` / `ps` / `exec` / `rm` / `images`）。阶段 0 尚未引入依赖；正式引入 cobra 时单独提交，只进 `main.go` 与命令注册代码。
+- **CLI**：使用 [cobra](https://github.com/spf13/cobra) 组织命令树（`pull` / `run` / `ps` / `exec` / `rm` / `images` / `boot [enable|disable|status]` / `shutdown`；`run` 支持 `--restart no|always|unless-stopped|on-failure`）。阶段 0 尚未引入依赖；正式引入 cobra 时单独提交，只进 `main.go` 与命令注册代码。
 - **配置**：一律 YAML（`~/.boxli/config.yaml` 及镜像 `index.json` 旁挂配置），字段用 `yaml` tag 显式命名；不要混用 TOML/JSON 配置文件（`index.json` 属于镜像格式，不算配置文件）。
 - **依赖**：阶段 0 `go.mod` 保持零第三方依赖；新增第三方库必须在 PR 里单独说明理由，容器/镜像/oci 相关的库一律不批。
 - **命名与注释**：导出标识符必须有文档注释；文件头保留 AGPL 版权声明两行。
