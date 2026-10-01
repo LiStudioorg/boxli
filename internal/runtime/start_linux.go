@@ -32,17 +32,6 @@ func newCID() string {
 	return strconv.Itoa(os.Getpid()) + "." + hex.EncodeToString(b[:])
 }
 
-// StartOptions 是 Start 的可选参数。
-type StartOptions struct {
-	// Stdin/Stdout/Stderr 透传给容器 init；nil 时取 os.Stdin/os.Stdout。
-	Stdin, Stdout, Stderr *os.File
-	// StopCh 非 nil 时：等待期间该通道可读，立即向 init 转发 SIGTERM，
-	// grace 后仍未退出则 SIGKILL（shim 的停止语义由调用方提供信号源）。
-	StopCh <-chan struct{}
-	// Grace 是 SIGTERM 到 SIGKILL 的宽限，默认 10s。
-	Grace time.Duration
-}
-
 // Start 以容器方式重执行当前二进制（/proc/self/exe + `init` 参数），
 // 创建 PID/Mount/UTS/IPC namespace（非 root 追加 USER），等待其退出并返回结果。
 // onChildStart 在子进程启动后、等待前被调用（可传 nil），用于内存采样等观测。

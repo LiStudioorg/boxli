@@ -8,6 +8,8 @@ package shim
 import (
 	"context"
 	"os"
+
+	"github.com/LiStudioorg/boxli/internal/store"
 )
 
 // 非 Linux 平台占位：shim 依赖 native_linux 运行时，随其后端一起落地。
@@ -23,3 +25,16 @@ var errUnsupported = &shimError{"boxli/shim: 本平台 shim 未实现（阶段 2
 type shimError struct{ msg string }
 
 func (e *shimError) Error() string { return e.msg }
+
+// Options 非 Linux 平台占位（保持引擎层跨平台可编译）。
+type Options struct {
+	Store   *store.Store
+	Cfg     *store.ContainerConfig
+	Stdin   *os.File
+	Stdout  *os.File
+	Stderr  *os.File
+	OnStart func(pid int)
+}
+
+// Run 非 Linux 平台不支持。
+func Run(_ context.Context, _ *Options) error { return errUnsupported }

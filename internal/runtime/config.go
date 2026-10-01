@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 )
 
 // 子进程通过环境变量传递初始化参数（exec 后仍然存活）。
@@ -77,3 +78,14 @@ func (c *Config) Validate() error {
 
 // IsInitProcess 报告当前进程是否为 fork 出来的容器 init。main.go 用它分流。
 func IsInitProcess() bool { return os.Getenv(envInitMarker) == "1" }
+
+// StartOptions 是 Start/StartWith 的可选参数（跨平台类型；Linux 后端生效）。
+type StartOptions struct {
+	// Stdin/Stdout/Stderr 透传给容器 init；nil 时取 os.Stdin/os.Stdout。
+	Stdin, Stdout, Stderr *os.File
+	// StopCh 非 nil 时：等待期间该通道可读，立即向 init 转发 SIGTERM，
+	// GraceConfig 后仍未退出则 SIGKILL（停止语义由调用方提供信号源）。
+	StopCh <-chan struct{}
+	// Grace 是 SIGTERM 到 SIGKILL 的宽限，默认 10s。
+	Grace time.Duration
+}

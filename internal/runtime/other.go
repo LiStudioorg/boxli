@@ -15,3 +15,10 @@ func RunInit() error { return ErrUnsupported }
 func Start(_ *Config, _ func(pid int)) (*StartResult, error) {
 	return nil, ErrUnsupported
 }
+
+// StartOptions 是跨平台参数类型（定义在 config.go 以便 engine 层引用）。
+
+// StartWith 非 Linux 平台不支持。
+func StartWith(_ *Config, _ func(pid int), _ *StartOptions) (*StartResult, error) {
+	return nil, ErrUnsupported
+}

@@ -332,6 +332,9 @@ func (s *Store) BootEligible(cfg *ContainerConfig) bool {
 	return true
 }
 
+// ContainerNames 返回已占用容器名集合（engine 生成自动名时避让）。
+func (s *Store) ContainerNames() (map[string]bool, error) { return s.containerNames() }
+
 // containerNames 返回已占用容器名集合。
 func (s *Store) containerNames() (map[string]bool, error) {
 	list, err := s.ListContainers()

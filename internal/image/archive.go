@@ -7,6 +7,7 @@ import (
 	"archive/tar"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -238,4 +239,42 @@ func (l *Loaded) CheckPlatform() error {
 		return nil
 	}
 	return fmt.Errorf("镜像 %s/%s 与宿主 %s/%s 不匹配: %w", m.OS, m.Architecture, hostOS, hostArch, ErrArchMismatch)
+}
+
+// ExtractFile 把外层归档里的条目 name 流式解出到目标路径 dst（覆盖写）。
+// 供 `boxli run` 把层 tar.gz 取出交给 storage.UnpackFile；条目不存在报 ErrConfigMissing。
+func (l *Loaded) ExtractFile(name, dst string) error {
+	if _, ok := l.entries[name]; !ok {
+		return fmt.Errorf("归档条目 %q 缺失: %w", name, ErrConfigMissing)
+	}
+	f, err := os.Open(l.Path)
+	if err != nil {
+		return fmt.Errorf("打开镜像文件失败: %w", err)
+	}
+	defer func() { _ = f.Close() }()
+	tr := tar.NewReader(f)
+	for {
+		hdr, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			return fmt.Errorf("归档条目 %q 缺失: %w", name, ErrConfigMissing)
+		}
+		if err != nil {
+			return fmt.Errorf("扫描归档失败: %w", err)
+		}
+		if hdr.Name != name {
+			continue
+		}
+		out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+		if err != nil {
+			return fmt.Errorf("创建 %s 失败: %w", dst, err)
+		}
+		_, err = io.Copy(out, tr)
+		if cerr := out.Close(); err == nil {
+			err = cerr
+		}
+		if err != nil {
+			return fmt.Errorf("解出条目 %q 失败: %w", name, err)
+		}
+		return nil
+	}
 }
