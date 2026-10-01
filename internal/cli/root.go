@@ -63,6 +63,10 @@ func NewRootCommand(out, errOut io.Writer) *cobra.Command {
 		newLoadCommand(out),
 		newExportCommand(out),
 		newImportCommand(out),
+		// Hub 分发。
+		newLoginCommand(out),
+		newPushCommand(out),
+		newSearchCommand(out),
 		// 编排与工具。
 		newComposeCommand(out),
 		newDevCommand(out),
