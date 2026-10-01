@@ -6,9 +6,11 @@ package engine
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 
 	"github.com/LiStudioorg/boxli/internal/boot"
+	"github.com/LiStudioorg/boxli/internal/resource"
 	"github.com/LiStudioorg/boxli/internal/store"
 )
 
@@ -52,6 +54,10 @@ func Remove(st *store.Store, idOrName string, force bool) (*RemoveResult, error)
 
 	// 移除网络端点与 NAT（veth 随 netns 销毁，宿主侧 veth 由 Disconnect 清）。
 	disconnectContainer(st, cfg)
+	// 清理容器专属 cgroup（进程已停，组内无活进程）。
+	if err := resource.Remove(cfg.ID); err != nil {
+		slog.Warn("删除容器 cgroup 失败（可能已不存在）", "container", cfg.ID, "err", err)
+	}
 	// 目录整体删除；rootfs 在容器目录内，随之一并清理。
 	if err := os.RemoveAll(st.ContainerDir(cfg.ID)); err != nil {
 		return res, fmt.Errorf("删除容器目录失败: %w", err)

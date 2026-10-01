@@ -77,6 +77,7 @@ func Run(ctx context.Context, o *Options) error {
 		env := append([]string{}, cfg.Env...)
 		env = append(env, runtime.ResolveNetEnv(st.Root, cfg.Network, cfg.ID, cfg.Hostname)...)
 		env = append(env, runtime.MountEnv(cfg.Mounts)...)
+		env = append(env, runtime.CgroupEnv(cfg.ID)...)
 		res, err := runtime.StartWith(&runtime.Config{
 			Rootfs:   cfg.Rootfs,
 			Hostname: cfg.Hostname,

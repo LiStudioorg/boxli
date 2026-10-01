@@ -15,6 +15,8 @@ func Setup(containerID string, l *Limits) (*Cgroup, error) {
 
 func Apply(c *Cgroup, l *Limits) error { return ErrUnsupported }
 
+func AddPID(containerID string, pid int) error { return ErrUnsupported }
+
 func Remove(containerID string) error { return nil }
 
 func Update(containerID string, l *Limits) error { return ErrUnsupported }

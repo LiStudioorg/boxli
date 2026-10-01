@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/LiStudioorg/boxli/internal/network"
+	"github.com/LiStudioorg/boxli/internal/resource"
 )
 
 // ErrNotRoot 表示既非 root 又未显式允许 rootless，无法启动容器。
@@ -111,6 +112,13 @@ func StartWith(cfg *Config, onChildStart func(pid int), opts *StartOptions) (*St
 			_ = syscall.Kill(cmd.Process.Pid, syscall.SIGKILL)
 			_ = cmd.Wait()
 			return nil, fmt.Errorf("装配容器网络失败: %w", err)
+		}
+	}
+	// 资源限制：把容器 init 写入其 cgroup.procs，令 CPU/内存/pids/io 限制生效。
+	// 失败仅告警（无 cgroups v2 或无 root 时不影响容器启动）。
+	if cid := cgroupIDFromEnv(cfg.Env); cid != "" {
+		if err := resource.AddPID(cid, cmd.Process.Pid); err != nil {
+			slog.Warn("把容器进程写入 cgroup 失败（可能需要 root 或 cgroups v2）", "container", cid, "err", err)
 		}
 	}
 	res := &StartResult{ChildPID: cmd.Process.Pid}

@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -21,6 +22,7 @@ import (
 	"time"
 
 	"github.com/LiStudioorg/boxli/internal/image"
+	"github.com/LiStudioorg/boxli/internal/resource"
 	"github.com/LiStudioorg/boxli/internal/runtime"
 	"github.com/LiStudioorg/boxli/internal/shim"
 	"github.com/LiStudioorg/boxli/internal/storage"
@@ -61,6 +63,8 @@ type RunSpec struct {
 	MemoryMB  int
 	CPUs      float64
 	PidsLimit int
+	// Limits 是完整的资源限制（CLI 由 runLimits 装配）；空表示无显式限制。
+	Limits *resource.Limits
 }
 
 // RunResult 是一次 run 的结果。
@@ -180,6 +184,11 @@ func Run(ctx context.Context, st *store.Store, spec *RunSpec) (*RunResult, error
 		_ = st.RemoveContainer(cfg.ID)
 		return nil, err
 	}
+	// 资源限制：创建容器专属 cgroup 并写入限制（哪怕空限制也建组，便于 stats）。
+	// 失败仅告警（无 cgroups v2 / 无 root 时降级），init PID 写入由 runtime 完成。
+	if _, err := resource.Setup(cfg.ID, spec.Limits); err != nil {
+		slog.Warn("创建容器 cgroup 失败（可能需要 root 或 cgroups v2）", "container", cfg.ID, "err", err)
+	}
 
 	res := &RunResult{Container: cfg, ShortID: id, Foreground: !spec.Detach, ExitCode: -1}
 	if err := prepareAndStartFn(ctx, st, cfg, res); err != nil {
@@ -278,6 +287,7 @@ func runForeground(ctx context.Context, st *store.Store, cfg *store.ContainerCon
 	env := append([]string{}, cfg.Env...)
 	env = append(env, netEnvFor(st, cfg, cfg.Hostname)...)
 	env = append(env, runtime.MountEnv(cfg.Mounts)...)
+	env = append(env, runtime.CgroupEnv(cfg.ID)...)
 	r, err := runtime.StartWith(&runtime.Config{
 		Rootfs:   cfg.Rootfs,
 		Hostname: cfg.Hostname,

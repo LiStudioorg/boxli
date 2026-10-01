@@ -107,6 +107,22 @@ func Apply(c *Cgroup, l *Limits) error {
 	return nil
 }
 
+// AddPID 把容器 init（或任意容器进程）PID 写入其 cgroup.procs，使之后代
+// 进程自动落入该组，让已设置的 CPU/内存/pids/io 限制对其生效。容器启动时
+// 由 runtime 在 fork 出 init 后调用；cgroup 必须已由 Setup 创建。
+// cgroup.procs 是内核虚拟文件，不支持 rename，直接整行写入追加 PID。
+func AddPID(containerID string, pid int) error {
+	c := NewCgroup(containerID)
+	if _, err := os.Stat(c.Path); os.IsNotExist(err) {
+		return fmt.Errorf("cgroup %s 不存在（先 Setup）: %w", c.Path, ErrUnsupported)
+	}
+	procs := filepath.Join(c.Path, "cgroup.procs")
+	if err := os.WriteFile(procs, []byte(strconv.Itoa(pid)), 0o644); err != nil {
+		return fmt.Errorf("写入 cgroup.procs: %w", err)
+	}
+	return nil
+}
+
 // write 原子写 cgroup 控制文件。
 func (c *Cgroup) write(name, val string) error {
 	if !Available() {

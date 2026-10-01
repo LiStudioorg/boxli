@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -96,6 +95,7 @@ func newRunCommand(out io.Writer) *cobra.Command {
 				MemoryMB:   opts.memoryMB,
 				CPUs:       opts.cpus,
 				PidsLimit:  opts.pidsLimit,
+				Limits:     lims,
 			}
 
 			// 前台模式：Ctrl+C（SIGINT/SIGTERM）→ ctx 取消 → engine 转发容器。
@@ -122,15 +122,10 @@ func newRunCommand(out io.Writer) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			// 网络接入与卷挂载均在 engine.Run 内部（启动前）完成：
+			// 网络接入、卷挂载与资源限制均在 engine.Run 内部（启动前）完成：
 			//   - 网络：分配 IP、登记端口并实化 NAT，veth 进容器 netns；
-			//   - 卷：解析 -v，匿名/命名卷补齐源路径，运行时 bind 进容器 mount ns。
-			// 资源限制：为容器创建 cgroup 并写入；无权限/非 Linux 时降级告警。
-			if !lims.Empty() {
-				if _, serr := resource.Setup(res.Container.ID, lims); serr != nil {
-					slog.Warn("应用资源限制失败（可能需要 root 或 cgroups v2）", "container", res.Container.ID, "err", serr)
-				}
-			}
+			//   - 卷：解析 -v，匿名/命名卷补齐源路径，运行时 bind 进容器 mount ns；
+			//   - 资源：建 cgroup 写限制，运行时把 init PID 写入 cgroup.procs。
 			if opts.detach {
 				fmt.Fprintf(out, "容器 %s（%s）已在后台运行，shim 持有生命周期\n",
 					res.Container.Name, res.Container.ID)
