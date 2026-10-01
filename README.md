@@ -14,14 +14,16 @@ Boxli 是一个用 Go 编写的轻量级容器引擎：常驻内存 10–20 MiB�
 
 ## 快速开始
 
-> Boxli 处于阶段 0（项目初始化），以下命令展示的是目标体验，功能将随版本逐步可用。
+> Boxli 处于阶段 1（镜像与 CLI），除标注"开发中"的命令外均为当前真实能力。
 
 ```bash
-boxli pull hub.boxli.dev/library/alpine:3.20.boxli   # 拉取一个 .boxli 镜像
-boxli run alpine:3.20 -- /bin/sh                     # 进入容器交互终端
-boxli ps                                             # 查看运行中的容器
-boxli exec <容器ID> cat /etc/os-release              # 在运行中的容器里执行命令
+boxli pull ./myapp-1.0.boxli                           # 导入本地 .boxli 镜像文件（现已可用）✔
+boxli run alpine:3.20 -- /bin/sh                       # 进入容器交互终端（开发中）
+boxli ps                                               # 查看运行中的容器（开发中）
+boxli exec <容器ID> cat /etc/os-release                # 在运行中的容器里执行命令（开发中）
 ```
+
+> 当前可用：`boxli pull <本地 .boxli 文件>`，自动完成清单解析、路径安全、层摘要与平台匹配校验，落地到 `~/.boxli/images`（可用 `--data-dir` / `BOXLI_HOME` 覆盖）。
 
 ## 开机自启
 

@@ -32,6 +32,7 @@ boxli/
 │   ├── image/           # .boxli 镜像的拉取、解析、校验（分层 gzip tar + index.json）
 │   ├── network/         # 自研容器网络：容器间通信与 NAT 出口
 │   ├── storage/         # 镜像与容器层存储：解压、层合并、读写层
+│   ├── store/           # 数据目录（~/.boxli）：pull 落地、state.json、boot 标记
 │   └── resource/        # 资源限制与采集：CPU / 内存 / PID
 ├── pkg/
 │   └── sdk/             # 对外 Go SDK，供第三方以库方式驱动 Boxli
@@ -197,6 +198,6 @@ CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -o boxli-darwin-arm64 .
 
 阶段 0 已完成：目录骨架、`go.mod`、文档、占位包，并已发布 `v0.1.0` 被 pkg.go.dev 收录。
 
-**阶段 1 进行中**：`.boxli` 镜像格式定义、cobra CLI 骨架、`internal/image` 清单解析器、`boxli pull` 本地 `.boxli` 文件支持（`boxli run` / `ps` / `exec` 为骨架占位，明确返回未实现）。
+**阶段 1 已完成**：`.boxli` 镜像格式定义（docs/image-spec.md）、cobra CLI 骨架、`internal/image` 清单解析器、`internal/store` 落地存储、`boxli pull` 本地 `.boxli` 文件支持（`boxli run` / `ps` / `exec` / `boot` / `shutdown` 为骨架占位，明确返回未实现）。
 
 阶段 2 目标（未开始）：层解包与合并（`internal/storage`）、`boxli run` 真实运行时、`boxli boot` 自启机制落地。
