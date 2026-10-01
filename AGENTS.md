@@ -205,10 +205,29 @@ CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -o boxli-darwin-arm64 .
 
 除此之外的第三方依赖一律不批；容器 / 镜像 / OCI / cgroups 相关库永久禁止（见"禁止事项"）。日志、配置、压缩、归档一律用标准库（`log/slog`、`archive/tar`、`compress/gzip`、`encoding/json`、`crypto/sha256`）。
 
-## 当前阶段：阶段 3（并行多模块已收官）
+## 当前阶段：阶段 4（v0.4.0 运行时接入已收官）
 
 阶段 0 已完成：目录骨架、`go.mod`、文档、占位包，并已发布 `v0.1.0` 被 pkg.go.dev 收录。
 阶段 1 / 阶段 2 已完成：镜像格式、运行时、boot/shim 体系、`boxli run/stop/ps/rm` 端到端（见下）。
+阶段 3 已完成：网络/卷/资源/CLI/Hub 五个并行模块合并入 main（v0.3.0）。
+
+**阶段 4 已完成（v0.4.0）**：把阶段 3 合并的参数真正作用到容器上——
+- **网络接入**：`boxli run` 启动时创建 veth pair，宿主端进网桥、容器端进容器
+  netns；`-p` NAT 规则绑定到容器 IP；容器内 DNS 指向网桥网关（resolv.conf
+  + hosts）。装配前移到启动前（engine 先分配 IP + 实化 NAT，runtime fork 后
+  装配 veth）。
+- **卷接入**：`-v` 在容器 mount namespace 里于 pivot_root 之前 bind 进
+  rootfs 目标路径；`:ro` 只读标记生效；匿名卷自动创建（anon_<id>）。
+- **资源接入**：容器 init fork 后其 PID 写入对应 cgroups v2 组
+  `cgroup.procs`，CPU/内存/pids/io 限制在容器生命周期内生效；`boxli rm`
+  清理 cgroup。
+- **`boxli exec`**：setns 进入运行中容器的命名空间执行命令，支持 `-i`
+  `-t`（PTY）`-e` `-w` `-u`；需 root（CAP_SYS_ADMIN）。
+- **`boxli hub serve`**：自建分发服务前台启动（--port/--data-dir/--storage
+  local|s3），JWT 鉴权，Ctrl+C 优雅关闭；login/push/pull/search 端到端可跑。
+
+> 特权路径（veth/nft、cgroup 写入、setns、exec）需 root；非 root 沙箱以
+> runbook 记录验收步骤（docs/e2e.md）、审计结果见 docs/audit-v0.4.0.md。
 
 **阶段 2 已收官**：`boxli run` / `boxli stop` / `boxli ps` / `boxli rm` 整合完成，冻结接口确立（见下节）。
 
@@ -281,6 +300,28 @@ ErrNotInit, ErrBadConfig, ErrNotRoot, ErrUnsupported
 - 平台后端以 build tag 分文件实现同一组签名（`*_linux.go` / `*_android.go` / `*_darwin.go`）；
   非 Linux 后端必须提供同名 stub 以保证全仓库可交叉编译。
 - `Start` 与 `StartWith` 的分工：`Start` 是 `StartWith(cfg, onChildStart, nil)` 的简写，两者都必须保留。
+
+**阶段 4 新增（v0.4.0，不做既有签名改动）**：
+
+```go
+// 在运行中容器的命名空间执行命令（setns 进入 mnt/uts/ipc/net/pid）
+func Exec(o *ExecOptions) (int, error) // 返回退出码（信号死亡 128+signum）；需 root
+
+type ExecOptions struct {
+    TargetPID int          // 容器 init 宿主 PID（runtime.json initPid）
+    Cmd       []string
+    Env       []string
+    Workdir   string
+    User      string       // uid[:gid]
+    Stdin, Stdout, Stderr  *os.File
+    TTY       bool         // -t：伪终端
+}
+```
+
+- `Exec` 由 `boxli exec` 调用；非 Linux 后端提供同签名 stub（返回 ErrUnsupported）。
+- 网络/卷/资源装配通过内部 `BOXLI_NET_*` / `BOXLI_MOUNT_*` / `BOXLI_CGROUP_ID` 环境变量
+  从父进程（engine/shim）传给容器 init，`envWithoutBoxli` 统一剥离，不经用户命令行。
+- `runtime` 新增跨平台辅助：`NetEnv`、`ResolveNetEnv`、`MountEnv`、`CgroupEnv`（供 engine/shim）。
 
 ### 二、Store（`internal/store`）
 

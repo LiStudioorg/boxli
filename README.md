@@ -14,19 +14,26 @@ Boxli 是一个用 Go 编写的轻量级容器引擎：常驻内存 10–20 MiB�
 
 ## 快速开始
 
-> Boxli 已进入 **阶段 3 收官（v0.3.0）**：镜像、运行时、网络、卷、资源限制、Hub 分发均已落地。除标注"开发中"的命令外均为当前真实能力。
+> Boxli 已进入 **阶段 4 收官（v0.4.0）**：镜像、运行时、网络、卷、资源限制、`exec`、Hub 分发均已落地，且 `-p`/`-v`/`--memory`/`--cpus` 等参数已**真正作用到容器**（veth 进 netns、卷 bind、cgroup 写入）。除标注"开发中"的命令外均为当前真实能力。
 
 ```bash
 boxli pull ./myapp-1.0.boxli                           # 导入本地 .boxli 镜像文件
 boxli run -p 8080:80 -v data:/data --memory 256 myapp:v1   # 端口映射 + 卷挂载 + 内存限制（MiB）
 boxli ps                                               # 查看运行中的容器
+boxli exec -it myapp /bin/sh                           # 进入运行中容器的命名空间执行命令
 boxli network ls                                       # 查看容器网络
 boxli volume ls                                        # 查看卷
 boxli resource info                                    # 查看资源能力（cgroups/GPU 等）
 boxli stats                                            # 实时查看容器资源用量
 ```
 
-> 当前已落地：`.boxli` 镜像导入（`pull`）、容器运行（`run`）、列出（`ps`）、网络（`network`）、卷（`volume`）、资源限制（`--memory/--cpus/--pids-limit` 等）、镜像产物操作（`tag/commit/save/load/export/import`）、以及 Hub 分发（`login/pull/push/search`）。可执行 `boxli --help` 查看完整命令树。
+> 当前已落地：`.boxli` 镜像导入（`pull`）、容器运行（`run`）、列出（`ps`）、
+> 命名空间执行（`exec`）、网络（`network`）、卷（`volume`）、资源限制
+> （`--memory/--cpus/--pids-limit` 等）、镜像产物操作（`tag/commit/save/load/export/import`）、
+> Hub 分发（`login/pull/push/search`）与服务端（`hub serve`）。可执行 `boxli --help` 查看完整命令树。
+
+> ⚠️ v0.4.0 起网络 veth、cgroup 写入、`boxli exec` 需要 **root**（CAP_NET_ADMIN / CAP_SYS_ADMIN）；
+> 非 root 下会给出"需要 root"清晰提示并降级（如部分网络/卷操作、无 cgroup 时）。
 
 ## Hub 分发（login / pull / push / search）
 
@@ -75,6 +82,29 @@ boxli resource update 容器ID --memory 512   # 动态调整运行中容器限�
 ```
 
 注：资源限制在无权限或非 Linux 平台下列表应用失败时降级为告警（`slog.Warn`），不阻断容器运行。
+
+## 进入运行中容器（exec）
+
+```bash
+boxli exec myapp /bin/echo hi               # 在容器命名空间执行命令
+boxli exec -it myapp /bin/sh                # 交互式 TTY
+boxli exec -e FOO=bar -w /data -u 1000 myapp /bin/env   # 环境变量 / 工作目录 / 用户
+```
+
+`exec` 通过 setns 进入容器的 mnt/uts/ipc/net/pid 命名空间后执行命令；
+需要 root。交互模式可带 `-i`（保持 stdin）与 `-t`（伪终端）。
+
+## 自建 Hub 服务（hub serve）
+
+```bash
+boxli hub serve                                   # 启动分发服务（默认 127.0.0.1:3727，Ctrl+C 关闭）
+boxli hub serve --port 9000 --data-dir /data/hub  # 自定义端口与数据目录
+boxli hub serve --username alice --password secret # 注册登录用户
+```
+
+服务端数据布局：`<root>/tags`、`<root>/blobs/sha256/<hex>`、`<root>/manifests`；
+客户端凭证存于 `<root>/hub/auth.json`。`boxli login/push/pull/search` 指向本地
+Hub 即可端到端分发镜像（验证步骤见 `docs/hub-e2e.md`）。
 
 ## 开机自启
 
