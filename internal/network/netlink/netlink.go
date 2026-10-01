@@ -40,12 +40,12 @@ const (
 	NLM_F_APPEND  = 0x800
 
 	// 路由消息族。
-	RTM_NEWLINK = 16
-	RTM_DELLINK = 17
-	RTM_GETLINK = 18
-	RTM_NEWADDR = 20
-	RTM_DELADDR = 21
-	RTM_GETADDR = 22
+	RTM_NEWLINK  = 16
+	RTM_DELLINK  = 17
+	RTM_GETLINK  = 18
+	RTM_NEWADDR  = 20
+	RTM_DELADDR  = 21
+	RTM_GETADDR  = 22
 	RTM_NEWROUTE = 24
 	RTM_DELROUTE = 25
 	RTM_GETROUTE = 26
@@ -56,11 +56,11 @@ const (
 	AF_INET6  = 10
 
 	// 链路属性。
-	IFLA_ADDRESS   = 1
-	IFLA_IFNAME    = 3
-	IFLA_MTU       = 4
-	IFLA_MASTER    = 10
-	IFLA_LINKINFO  = 18
+	IFLA_ADDRESS    = 1
+	IFLA_IFNAME     = 3
+	IFLA_MTU        = 4
+	IFLA_MASTER     = 10
+	IFLA_LINKINFO   = 18
 	IFLA_NET_NS_PID = 19
 	IFLA_NET_NS_FD  = 28
 
@@ -78,14 +78,14 @@ const (
 	RTA_TABLE    = 15
 
 	// 路由表与协议。
-	RT_TABLE_MAIN = 254
-	RTPROT_BOOT   = 3
+	RT_TABLE_MAIN     = 254
+	RTPROT_BOOT       = 3
 	RT_SCOPE_UNIVERSE = 0
 	RT_SCOPE_LINK     = 253
 	RTN_UNICAST       = 1
 
 	// 链路类型标记（ifi_type）。
-	ARPHRD_ETHER = 1
+	ARPHRD_ETHER    = 1
 	ARPHRD_LOOPBACK = 772
 
 	// 命名空间类型（setns）。
