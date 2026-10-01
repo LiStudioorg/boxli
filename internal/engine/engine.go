@@ -193,7 +193,12 @@ func Run(ctx context.Context, st *store.Store, spec *RunSpec) (*RunResult, error
 	res := &RunResult{Container: cfg, ShortID: id, Foreground: !spec.Detach, ExitCode: -1}
 	if err := prepareAndStartFn(ctx, st, cfg, res); err != nil {
 		// 启动失败：状态目录保留（有 runtime.json 线索），rootfs 半成品清理避免误导。
+		// 同时撤回已建的网络端点（防残留 veth/NAT）与 cgroup（无活进程）。
 		_ = os.RemoveAll(cfg.Rootfs)
+		disconnectContainer(st, cfg)
+		if cerr := resource.Remove(cfg.ID); cerr != nil {
+			slog.Debug("清理失败容器 cgroup 出错", "container", cfg.ID, "err", cerr)
+		}
 		return res, err
 	}
 	return res, nil

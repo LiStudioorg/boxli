@@ -123,17 +123,17 @@ func AddPID(containerID string, pid int) error {
 	return nil
 }
 
-// write 原子写 cgroup 控制文件。
+// write 直接写 cgroup 控制文件。cgroup v2 的控制文件（memory.max、cpu.max、
+// cgroup.procs 等）是内核虚拟文件，不支持临时文件 + rename，必须整行直写。
 func (c *Cgroup) write(name, val string) error {
 	if !Available() {
 		return fmt.Errorf("cgroups v2 不可用: %w", ErrUnsupported)
 	}
 	path := filepath.Join(c.Path, name)
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(val), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(val), 0o644); err != nil {
 		return fmt.Errorf("写入 %s: %w", name, err)
 	}
-	return os.Rename(tmp, path)
+	return nil
 }
 
 // writeIOWeight 写 io.weight（把 v1 blkio 换算成 v2）。
