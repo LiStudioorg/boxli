@@ -174,7 +174,8 @@ func (s *Store) CreateContainer(cfg *ContainerConfig) error {
 	if err != nil {
 		return fmt.Errorf("序列化 config.json 失败: %w", err)
 	}
-	tmp := dir + ".tmp"
+	// tmp 必须与目标同目录：跨目录 rename 在 overlayfs 等文件系统上可能 EXDEV。
+	tmp := filepath.Join(dir, ".config.tmp")
 	if err := os.WriteFile(tmp, data, 0o644); err != nil {
 		return fmt.Errorf("写 config.json 失败: %w", err)
 	}
