@@ -81,6 +81,10 @@ func Run(ctx context.Context, o *Options) error {
 			Env:      cfg.Env,
 		}, func(pid int) {
 			state.InitPID = pid
+			// 容器已 fork 但尚未退出：立即持久化，running 期间 status/stop 可见 initPid。
+			running := state
+			running.Running = true
+			_ = st.WriteRuntimeState(cfg.ID, &running)
 			if o.OnStart != nil {
 				o.OnStart(pid)
 			}

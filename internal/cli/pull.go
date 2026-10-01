@@ -5,6 +5,7 @@ package cli
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/LiStudioorg/boxli/internal/service"
 	"github.com/LiStudioorg/boxli/internal/store"
 )
 
@@ -54,8 +56,8 @@ func runPull(out io.Writer, srcPath string, force bool, rootDir string) error {
 	return nil
 }
 
-// suggestBoot 实现"首次使用引导"（AGENTS.md）：数据目录中没有 boot 标记文件时询问用户。
-// boot enable 本体在阶段 2 落地；此处确认后仅记录标记，不执行半截系统操作。
+// suggestBoot 实现"首次使用引导"（AGENTS.md）：数据目录中没有 boot 标记文件时询问用户，
+// 确认后直接执行 boot enable（失败仅提示，不影响本次操作；标记防止重复打断）。
 func suggestBoot(out io.Writer, st *store.Store) {
 	marker := st.BootMarker()
 	if marker == "" {
@@ -72,8 +74,23 @@ func suggestBoot(out io.Writer, st *store.Store) {
 		// 非交互输入（EOF）：视为默认拒绝，记录标记避免反复打断脚本执行。
 		fmt.Fprintln(out, "已跳过。")
 	case strings.EqualFold(strings.TrimSpace(line), "y"), strings.EqualFold(strings.TrimSpace(line), "yes"):
-		fmt.Fprintln(out, "boxli boot enable 尚未实现（阶段 2 落地），已记录引导结果，不再重复询问。")
-		ack = "prompted\n"
+		res, err := service.Enable(context.Background(), serviceOptions(st))
+		switch {
+		case err != nil:
+			fmt.Fprintf(out, "启用失败：%v\n", err)
+			ack = "failed\n"
+		case res == nil:
+			ack = "failed\n"
+		default:
+			fmt.Fprintf(out, "服务文件：%s\n", res.UnitPath)
+			if res.Systemd {
+				fmt.Fprintf(out, "已注册 systemd 开机自启。\n")
+				ack = "enabled\n"
+			} else {
+				fmt.Fprintf(out, "提示：%s\n", res.Note)
+				ack = "file-only\n"
+			}
+		}
 	default:
 		fmt.Fprintln(out, "已跳过。可随时执行 boxli boot enable 启用。")
 	}

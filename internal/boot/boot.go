@@ -9,8 +9,10 @@ package boot
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"syscall"
+	"time"
 
 	"github.com/LiStudioorg/boxli/internal/shim"
 	"github.com/LiStudioorg/boxli/internal/store"
@@ -114,4 +116,53 @@ func PidAlive(pid int) bool {
 	}
 	err = p.Signal(syscall.Signal(0))
 	return err == nil || errors.Is(err, syscall.EPERM)
+}
+
+// StopAll 优雅停止全部在运行的容器：向每个存活 shim 发 SIGTERM（shim 收到后
+// 转发容器 init 并退出，见 internal/shim）。供 `boxli shutdown` 使用。
+// wait 是等待 shim 退出的总时限；到点仍存活的计入 Timeout。单容器错误不中断整体。
+func StopAll(st *store.Store, wait time.Duration) (stopped, notRunning, timeout int, err error) {
+	all, err := st.ListContainers()
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	var pids []int
+	for _, cfg := range all {
+		stt, ok, err := st.ReadRuntimeState(cfg.ID)
+		if err != nil {
+			return stopped, notRunning, timeout, fmt.Errorf("读取容器 %s 状态失败: %w", cfg.ID, err)
+		}
+		if !ok || !stt.Running || !PidAlive(stt.ShimPID) {
+			notRunning++
+			continue
+		}
+		pids = append(pids, stt.ShimPID)
+	}
+	for _, pid := range pids {
+		if err := syscall.Kill(pid, syscall.SIGTERM); err != nil && !errors.Is(err, os.ErrProcessDone) {
+			slog.Warn("向 shim 发送 SIGTERM 失败", "pid", pid, "err", err)
+		}
+	}
+	// 轮询等待 shim 退出（shim 内部还要等容器 init 收尾）。
+	deadline := time.After(wait)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	pending := len(pids)
+loop:
+	for pending > 0 {
+		select {
+		case <-deadline:
+			break loop
+		case <-ticker.C:
+			pending = 0
+			for _, pid := range pids {
+				if PidAlive(pid) {
+					pending++
+				}
+			}
+		}
+	}
+	stopped = len(pids) - pending
+	timeout = pending
+	return stopped, notRunning, timeout, nil
 }
