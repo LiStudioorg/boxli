@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/LiStudioorg/boxli/internal/engine"
+	"github.com/LiStudioorg/boxli/internal/network"
 	"github.com/LiStudioorg/boxli/internal/store"
 )
 
@@ -35,6 +36,8 @@ func newRunCommand(out io.Writer) *cobra.Command {
 		entrypoint []string
 		ports      []string
 		volumes    []string
+		network    string
+		ip         string
 		dataDir    string
 	}
 	cmd := &cobra.Command{
@@ -50,9 +53,10 @@ func newRunCommand(out io.Writer) *cobra.Command {
 			if !restart.Valid() {
 				return fmt.Errorf("run: 非法 --restart 值 %q（可选：no|always|unless-stopped|on-failure）", opts.restart)
 			}
-			// 阶段 3 占位参数：记录进配置、暂不生效，明确告警不静默。
-			for _, p := range opts.ports {
-				slog.Warn("-p 端口映射尚未实现（阶段 3 网络落地），本次运行忽略", "mapping", p)
+			// 解析端口映射（网络侧生效；-v 卷仍为阶段 3 占位）。
+			mappings, err := parsePorts(opts.ports)
+			if err != nil {
+				return err
 			}
 			for _, v := range opts.volumes {
 				slog.Warn("-v 宿主机卷挂载尚未实现（阶段 3 落地），本次运行忽略", "volume", v)
@@ -108,6 +112,11 @@ func newRunCommand(out io.Writer) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// 网络接入：宿主机侧登记容器端点并实化端口 NAT。veth 注入容器
+			// 命名空间需运行时协作（见交接摘要）；此处负责数据层 + NAT。
+			if werr := wireNetwork(opts.dataDir, res.Container, opts.network, opts.ip, mappings); werr != nil {
+				slog.Warn("容器网络接入失败", "container", res.Container.ID, "err", werr)
+			}
 			if opts.detach {
 				fmt.Fprintf(out, "容器 %s（%s）已在后台运行，shim 持有生命周期\n",
 					res.Container.Name, res.Container.ID)
@@ -137,8 +146,139 @@ func newRunCommand(out io.Writer) *cobra.Command {
 	f.StringVar(&opts.workdir, "workdir", "", "工作目录")
 	f.StringVar(&opts.user, "user", "", "运行用户 uid:gid（阶段 3 生效）")
 	f.StringSliceVar(&opts.entrypoint, "entrypoint", nil, "覆盖镜像 entrypoint")
-	f.StringSliceVarP(&opts.ports, "publish", "p", nil, "端口映射 HOST:CONTAINER（阶段 3 生效）")
+	f.StringSliceVarP(&opts.ports, "publish", "p", nil, "端口映射 HOST:CONTAINER[:PROTO]")
 	f.StringSliceVarP(&opts.volumes, "volume", "v", nil, "卷挂载 HOST:CONTAINER（阶段 3 生效）")
+	f.StringVar(&opts.network, "network", "boxli0", "接入网络：boxli0(bridge)|host|none|自定义")
+	f.StringVar(&opts.ip, "ip", "", "指定容器 IP（默认自动分配）")
 	f.StringVar(&opts.dataDir, "data-dir", "", "数据目录（默认 $BOXLI_HOME 或 ~/.boxli）")
 	return cmd
+}
+
+// parsePorts 把 -p 的字符串解析为 PortMapping 列表。
+// 支持形式："8080:80"、"8080:80/udp"、"80"（省略宿主端口=随机）、
+// "127.0.0.1:8080:80"（宿主 IP+端口）。
+func parsePorts(ports []string) ([]*network.PortMapping, error) {
+	var out []*network.PortMapping
+	for _, raw := range ports {
+		p, err := parsePort(raw)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, nil
+}
+
+func parsePort(raw string) (*network.PortMapping, error) {
+	proto := network.ProtoTCP
+	if i := indexByte(raw, '/'); i >= 0 {
+		switch raw[i+1:] {
+		case "tcp":
+			proto = network.ProtoTCP
+		case "udp":
+			proto = network.ProtoUDP
+		default:
+			return nil, fmt.Errorf("run: 非法协议 %q", raw[i+1:])
+		}
+		raw = raw[:i]
+	}
+	// 拆分 IP:host:container。
+	parts := splitColon(raw)
+	p := &network.PortMapping{Proto: proto}
+	switch len(parts) {
+	case 1: // 只有容器端口
+		p.ContainerPort = atoi(parts[0])
+		p.HostPort = 0 // 随机
+	case 2: // host:container
+		p.HostPort = atoi(parts[0])
+		p.ContainerPort = atoi(parts[1])
+	case 3: // ip:host:container
+		p.HostIP = parts[0]
+		p.HostPort = atoi(parts[1])
+		p.ContainerPort = atoi(parts[2])
+	default:
+		return nil, fmt.Errorf("run: 非法端口映射 %q", raw)
+	}
+	if err := p.Validate(); err != nil {
+		return nil, fmt.Errorf("run: %w", err)
+	}
+	return p, nil
+}
+
+func indexByte(s string, b byte) int {
+	for i := 0; i < len(s); i++ {
+		if s[i] == b {
+			return i
+		}
+	}
+	return -1
+}
+
+func splitColon(s string) []string {
+	var out []string
+	var cur []byte
+	for i := 0; i < len(s); i++ {
+		if s[i] == ':' {
+			out = append(out, string(cur))
+			cur = cur[:0]
+		} else {
+			cur = append(cur, s[i])
+		}
+	}
+	out = append(out, string(cur))
+	return out
+}
+
+func atoi(s string) int {
+	n := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return 0
+		}
+		n = n*10 + int(s[i]-'0')
+	}
+	return n
+}
+
+// wireNetwork 把刚创建的容器接入指定网络并实化端口 NAT。
+// 它只操作数据层与宿主 NAT；veth 进容器命名空间由运行时协作，不在本分支。
+func wireNetwork(dataDir string, cfg *store.ContainerConfig, netName, wantIP string, ports []*network.PortMapping) error {
+	if netName == "" {
+		netName = "boxli0"
+	}
+	if netName == "none" || netName == "host" {
+		// host/none 无端口 NAT。
+		if len(ports) > 0 {
+			slog.Warn("网络 %s 不支持端口映射，忽略 -p", "net", netName)
+		}
+		return nil
+	}
+	m, err := network.NewManager(dataDir)
+	if err != nil {
+		return err
+	}
+	// 接入网络（bridge 分配 IP）。
+	if _, err := m.Connect(netName, cfg.ID, cfg.Name, wantIP); err != nil {
+		return err
+	}
+	// 登记端口映射并实化 NAT。
+	if len(ports) > 0 {
+		if err := m.AllocatePorts(netName, cfg.ID, ports); err != nil {
+			_ = m.Disconnect(netName, cfg.ID)
+			return err
+		}
+		if err := m.ApplyNAT(netName); err != nil {
+			// NAT 失败不阻断容器运行（容器本身已启动），仅告警。
+			slog.Warn("实化网络 NAT 失败（可能需要 root 或 nft）", "net", netName, "err", err)
+		}
+	}
+	ep, err := m.Load(netName)
+	if err == nil {
+		for _, e := range ep.Endpoints {
+			if e.ContainerID == cfg.ID && e.IP != "" {
+				slog.Info("容器已接入网络", "net", netName, "ip", e.IP)
+			}
+		}
+	}
+	return nil
 }
