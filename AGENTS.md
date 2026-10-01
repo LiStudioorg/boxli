@@ -27,13 +27,24 @@ Boxli 是一个用 Go 编写的**轻量级容器引擎**，使用场景类似 Do
 ```
 boxli/
 ├── main.go              # CLI 入口（根目录，直接 go build 即可编译）
+├── hub/                 # 分发服务端：blob 存储 + JWT 鉴权 HTTP API + 客户端 Client
 ├── internal/
 │   ├── runtime/         # 容器运行时：创建 / 启动 / 停止 / 回收，按平台后端分文件
 │   ├── image/           # .boxli 镜像的拉取、解析、校验（分层 gzip tar + index.json）
 │   ├── network/         # 自研容器网络：容器间通信与 NAT 出口
-│   ├── storage/         # 镜像与容器层存储：解压、层合并、读写层
+│   ├── storage/         # 镜像与容器层存储：解压、层合并、读写层、卷
+│   │   └── volume/      # 卷：驱动、命名/匿名卷、配额（volume/tmpfs/snapshot）
 │   ├── store/           # 数据目录（~/.boxli）：pull 落地、state.json、boot 标记
-│   └── resource/        # 资源限制与采集：CPU / 内存 / PID
+│   ├── resource/        # 资源限制与采集：CPU / 内存 / PID / 加速器直通
+│   ├── engine/          # `boxli run` 编排层：镜像查找 → 解包合并 → 状态落盘 → 启停
+│   ├── shim/            # 每容器生命周期持有者（shim 进程 + restart 策略）
+│   ├── boot/            # `boxli boot` 一次性扫描拉起自启容器
+│   ├── service/         # 系统服务（systemd / launchd / Magisk / Termux）管理
+│   ├── build/           # 自研镜像构建：boxfile 解析 → 层生成
+│   ├── compose/         # compose 编排解析与执行
+│   ├── dev/             # 开发工具：文件监听、热重载
+│   ├── doctor/          # 环境自检：内核/namespace/cgroup/systemd/存储
+│   └── scaffold/        # 项目脚手架：boxfile/compose 模板与 lint
 ├── pkg/
 │   └── sdk/             # 对外 Go SDK，供第三方以库方式驱动 Boxli
 ├── docs/
@@ -194,13 +205,33 @@ CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -o boxli-darwin-arm64 .
 
 除此之外的第三方依赖一律不批；容器 / 镜像 / OCI / cgroups 相关库永久禁止（见"禁止事项"）。日志、配置、压缩、归档一律用标准库（`log/slog`、`archive/tar`、`compress/gzip`、`encoding/json`、`crypto/sha256`）。
 
-## 当前阶段：阶段 2
+## 当前阶段：阶段 3（并行多模块已收官）
 
 阶段 0 已完成：目录骨架、`go.mod`、文档、占位包，并已发布 `v0.1.0` 被 pkg.go.dev 收录。
+阶段 1 / 阶段 2 已完成：镜像格式、运行时、boot/shim 体系、`boxli run/stop/ps/rm` 端到端（见下）。
+
+**阶段 2 已收官**：`boxli run` / `boxli stop` / `boxli ps` / `boxli rm` 整合完成，冻结接口确立（见下节）。
 
 **阶段 1 已完成**：`.boxli` 镜像格式定义（docs/image-spec.md）、cobra CLI 骨架、`internal/image` 清单解析器、`internal/store` 落地存储、`boxli pull` 本地 `.boxli` 文件支持（`boxli run` / `ps` / `exec` / `boot` / `shutdown` 为骨架占位，明确返回未实现）。
 
 **阶段 2 进行中**：Linux 原生运行时 spike 已完成——`internal/runtime`（native_linux）实现纯 Go 的 namespace + pivot_root 容器（rootless 自动 user namespace），`boxli init`（隐藏命令）为容器 1 号进程入口，`boxli dev-run`（隐藏命令）为开发/基准入口；实测每容器 ≈ 2.3 MiB，报告见 [docs/runtime-benchmark.md](docs/runtime-benchmark.md)。`internal/storage` 层解包器已完成——`UnpackFile` 内容寻址解包（layers/sha256/<hex>/fs），`MergeLayers` 按序合并（whiteout/opaque 删除语义、符号链接逃逸防护、设备节点与 setuid 剥离、并发安全）；测试覆盖路径逃逸、重复条目、损坏 gzip、opaque 符号链接防护等场景。`boxli images` 已完成——`store.ListImages` 扫描 state.json（损坏条目跳过并告警），输出 REPOSITORY/TAG/ARCH/LAYERS/SIZE/CREATED 按导入时间倒序，支持 `-q` 与 `--format` Go 模板，空 store 友好提示且退出码 0。boot/shim 体系已完成——`<root>/containers/<id>/` 状态目录（config.json + runtime.json + stopped-by-user 标记）为 run/boot/shim 共用地基；`internal/shim` 为每容器生命周期持有者（Reexec 重执行 + setsid 脱终端 + container.log，restart 策略循环与退避重启）；`internal/boot.StartAll` 实现 `boxli boot` 一次性扫描拉起（策略矩阵 + 停止标记 + 幂等防重）；`internal/service` 管理 systemd unit（enable/disable/status，无 systemd 或无权限时明确提示并给出 sudo 手动命令）；`boxli shutdown` 经 SIGTERM shim 优雅停机；首次使用引导接入真实 boot enable。剩余：`boxli run` / `boxli stop` / `boxli ps` / `boxli rm` 整合已完成（阶段 2 收官）。`internal/engine` 为一次 run 的编排层（镜像查找 → 每层解包 → rootfs 合并 → 容器状态落盘 → 前台持有或后台 fork shim），CLI 只做参数绑定；`boxli run` 默认前台 stdio 直连、Ctrl+C 经 StopCh 转发容器、退出码透传 shell，`-d` 后台 fork shim 并打印容器 ID；`--name` 缺省自动生成 `adjective_animal` 式名字并去重；`-p`/`-v`/`--memory`/`--cpus`/`--pids-limit` 已解析并记入容器配置、运行时忽略并 `slog.Warn`（阶段 3 落地）。`boxli stop` 先写 `stopped-by-user` 标记再 SIGTERM shim，超时强杀并补写终态，已停止容器幂等；默认宽限为 `shim.GraceHold+5s`，小于该值会与 shim 写终态竞态导致退出码丢失。`boxli ps` 默认仅列运行中容器，`-a` 含已停止，`-q` 只出 ID，状态列区分 Up/Exited/Created 并标注 `user-stopped`。`boxli rm` 删除已停止容器整目录（含该容器独占的 rootfs，共享层缓存保留），运行中拒绝并提示先 stop，`-f` 先停再删。另修复 `boot.PidAlive` 真实缺陷：僵尸进程对 `signal 0` 仍探活成功，僵死 shim 会被 boot 误判为“已在运行”而永不重启，现读 `/proc/<pid>/stat` 判僵尸态。剩余（阶段 3）：`boxli exec`、资源限制（memory/cpus/pids）实际生效、`-p` 端口映射与 `-v` 卷挂载、`internal/network` 与 `internal/resource`。
+
+### 阶段 3 并行模块（v0.3.0 已合并收官）
+
+5 个模块分支已按序合并入 main，每个分支只碰自己那一列的路径，冻结接口零改动：
+
+| 分支 | 合并 commit | 落地内容 |
+| --- | --- | --- |
+| `feat/network` | `5571467` | `internal/network`（bridge / veth / 端口 NAT / DNS / netlink 高层封装）+ `boxli network` 命令树；`boxli run` 接入 `--network/--ip` 与 `-p` 端口映射 |
+| `feat/volume` | `df140b8` | `internal/storage/volume`（驱动 / 命名/匿名卷 / 配额 / tmpfs / snapshot）+ `boxli volume` 命令；`boxli run` 的 `-v` 卷落盘 |
+| `feat/resource` | `92817c7` | `internal/resource`（cgroup / CPU / 内存 / PID / 加速器直通）+ `boxli resource`、`boxli stats`、`boxli update`；`boxli run` 接入 `--memory*`/`--cpus`/`--pids-limit`/`--cpuset`/`--blkio`/`--storage`/`--network-bandwidth`/`--gpu`/`--npu` |
+| `feat/cli` | `750ec04` | `internal/cli` 新命令（tag/commit/save/load/export/import/compose/dev/build/doctor/lint/scaffold/completion）+ `internal/build`、`internal/compose`、`internal/dev`、`internal/doctor`、`internal/scaffold` |
+| `feat/hub` | `eb88154` | `hub/`（blob 存储 + JWT 鉴权 HTTP API + 客户端 Client）；`boxli login/pull/push/search` 已接入 `hub.Client`（`0c265c9`） |
+
+Hub 分发命令说明：`boxli login` 向 Hub 换取令牌并缓存到 `<数据目录>/hub/auth.json`
+（绑定 Hub 地址）；`boxli pull NAME:VERSION`、`boxli push NAME:VERSION file.boxli`、
+`boxli search QUERY` 复用该令牌。Hub 地址按 `--hub` > `$BOXLI_HUB` > `http://127.0.0.1:3727`
+顺序解析。`boxli pull ./x.boxli` 仍保留本地文件导入语义。
 
 ## 冻结接口（阶段 2 收官）
 
