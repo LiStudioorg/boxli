@@ -56,6 +56,21 @@ func NewRootCommand(out, errOut io.Writer) *cobra.Command {
 		newInitCommand(out),
 		newSpikeCommand(out),
 		newShimCommand(out),
+		// 镜像产物操作。
+		newTagCommand(out),
+		newCommitCommand(out),
+		newSaveCommand(out),
+		newLoadCommand(out),
+		newExportCommand(out),
+		newImportCommand(out),
+		// 编排与工具。
+		newComposeCommand(out),
+		newDevCommand(out),
+		newBuildCommand(out),
+		newDoctorCommand(out),
+		newLintCommand(out),
+		newScaffoldCommand(out),
+		newCompletionCommand(root, out),
 	)
 	return root
 }
