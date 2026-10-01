@@ -128,6 +128,9 @@ func bridgeHostInterface(netName string) string {
 	return ifaceName(netName)
 }
 
+// HostBridgeIface 返回网络对应的宿主网桥接口名（供 runtime 装配 veth 使用）。
+func HostBridgeIface(netName string) string { return bridgeHostInterface(netName) }
+
 // ifaceName 把网络名收敛为合法 Linux 接口名（≤15，去非法字符）。
 func ifaceName(name string) string {
 	out := make([]byte, 0, len(name))

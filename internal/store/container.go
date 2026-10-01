@@ -71,6 +71,10 @@ type ContainerConfig struct {
 	WorkingDir string `json:"workingDir,omitempty"`
 	// User 是运行身份（阶段 2 暂仅记录，rootless 下等价 root）。
 	User string `json:"user,omitempty"`
+	// Network 是接入的网络名（boxli0/自定义/host/none）；空表示未指定（默认 bridge boxli0）。
+	Network string `json:"network,omitempty"`
+	// IP 是容器在桥接网络上的分配 IP；host/none 为空。
+	IP string `json:"ip,omitempty"`
 	// CreatedAt 是创建时间（UTC，RFC 3339）。
 	CreatedAt string `json:"createdAt"`
 }
@@ -181,6 +185,35 @@ func (s *Store) CreateContainer(cfg *ContainerConfig) error {
 	}
 	if err := os.Rename(tmp, filepath.Join(dir, "config.json")); err != nil {
 		return fmt.Errorf("落位 config.json 失败: %w", err)
+	}
+	return nil
+}
+
+// WriteContainerConfig 原子重写某容器已存在的 config.json（如启动前解析出
+// 网络 IP 后回写）。配置字段只增不改；不存在或校验失败时返回错误。
+func (s *Store) WriteContainerConfig(cfg *ContainerConfig) error {
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("序列化 config.json 失败: %w", err)
+	}
+	tmp := filepath.Join(s.ContainerDir(cfg.ID), ".config.tmp")
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return fmt.Errorf("写 config.json 失败: %w", err)
+	}
+	if err := os.Rename(tmp, filepath.Join(s.ContainerDir(cfg.ID), "config.json")); err != nil {
+		return fmt.Errorf("落位 config.json 失败: %w", err)
+	}
+	return nil
+}
+
+// RemoveContainer 删除容器状态目录（配置、运行状态、该容器独占 rootfs）。
+// 供启动失败等清理路径调用；共享层缓存不受影响。
+func (s *Store) RemoveContainer(id string) error {
+	if err := os.RemoveAll(s.ContainerDir(id)); err != nil {
+		return fmt.Errorf("删除容器目录失败: %w", err)
 	}
 	return nil
 }

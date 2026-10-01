@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 	"sort"
@@ -321,6 +322,60 @@ func (m *Manager) ClearNAT(netName string) error {
 		return err
 	}
 	return n.removePortRules("")
+}
+
+// EnsurePreset 无条件确保预置 boxli0 网络定义与宿主网桥存在（幂等）。
+func (m *Manager) EnsurePreset() error {
+	return m.ensurePreset()
+}
+
+// EnsureDriver 保证网络对应的宿主侧拓扑存在（bridge 建立网桥接口）。
+// 容器启动前调用，让 runtime 装配 veth 时网桥已就绪。
+func (m *Manager) EnsureDriver(name string) error {
+	n, err := m.Load(name)
+	if err != nil {
+		return err
+	}
+	return driverBootstrap(n)
+}
+
+// ClientNet 描述某个容器接入一个网络所需的运行时装配置（供 engine/shim
+// 在启动前求出，再经环境变量注入 init）。仅 bridge 有意义。
+type ClientNet struct {
+	// Name 是网络名。
+	Name string
+	// IP 是分配给该容器的地址。
+	IP string
+	// Gateway 是网桥网关。
+	Gateway string
+	// Prefix 是子网掩码长度。
+	Prefix int
+}
+
+// ClientNetConfig 返回容器 A 接入网络所需的 bridge 装配参数。
+// 容器必须已通过 Connect 接入（否则返回 ErrEndpointNotFound）。
+func (m *Manager) ClientNetConfig(netName, containerID string) (*ClientNet, error) {
+	n, err := m.Load(netName)
+	if err != nil {
+		return nil, err
+	}
+	if n.Driver != DriverBridge {
+		return nil, fmt.Errorf("网络 %s 驱动 %q 非桥接，无 veth 装配: %w", netName, n.Driver, ErrBadNetwork)
+	}
+	for _, e := range n.Endpoints {
+		if e.ContainerID == containerID {
+			if e.IP == "" {
+				return nil, fmt.Errorf("容器 %s 在网络 %s 上未分到 IP: %w", containerID, netName, ErrBadNetwork)
+			}
+			_, ipnet, err := net.ParseCIDR(n.Subnet)
+			if err != nil {
+				return nil, fmt.Errorf("网络 %s 子网非法: %w", netName, ErrBadNetwork)
+			}
+			ones, _ := ipnet.Mask.Size()
+			return &ClientNet{Name: netName, IP: e.IP, Gateway: n.Gateway, Prefix: ones}, nil
+		}
+	}
+	return nil, fmt.Errorf("容器 %s 未接入网络 %s: %w", containerID, netName, ErrEndpointNotFound)
 }
 
 // validateSubnet 校验 bridge 网段与网关。

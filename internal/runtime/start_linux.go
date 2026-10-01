@@ -17,6 +17,8 @@ import (
 	"strconv"
 	"syscall"
 	"time"
+
+	"github.com/LiStudioorg/boxli/internal/network"
 )
 
 // ErrNotRoot 表示既非 root 又未显式允许 rootless，无法启动容器。
@@ -80,6 +82,10 @@ func StartWith(cfg *Config, onChildStart func(pid int), opts *StartOptions) (*St
 	cmd.Stderr = firstNonNil(opts.Stderr, cmd.Stdout.(*os.File))
 
 	flags := uintptr(syscall.CLONE_NEWPID | syscall.CLONE_NEWNS | syscall.CLONE_NEWUTS | syscall.CLONE_NEWIPC)
+	// 网络装配：bridge/none 需要独立的网络命名空间；host 复用宿主网络栈。
+	if mode, _, _, _, _, _, _, ok := parseNetEnv(cfg.Env); ok && *mode != network.ModeHost {
+		flags |= syscall.CLONE_NEWNET
+	}
 	sys := &syscall.SysProcAttr{Cloneflags: flags}
 	if rootless {
 		sys.Cloneflags |= syscall.CLONE_NEWUSER
@@ -97,6 +103,15 @@ func StartWith(cfg *Config, onChildStart func(pid int), opts *StartOptions) (*St
 	}
 	if onChildStart != nil {
 		onChildStart(cmd.Process.Pid)
+	}
+	// 容器已 fork（netns 就绪）：装配 veth 并把容器侧移入其 netns。
+	if mode, cid, name, _, _, _, _, ok := parseNetEnv(cfg.Env); ok && *mode == network.ModeBridge {
+		if err := network.AttachVeth(name, cid, cmd.Process.Pid); err != nil {
+			// veth 装配失败：杀掉已 fork 的 init，避免启动一个无网络的可疑容器。
+			_ = syscall.Kill(cmd.Process.Pid, syscall.SIGKILL)
+			_ = cmd.Wait()
+			return nil, fmt.Errorf("装配容器网络失败: %w", err)
+		}
 	}
 	res := &StartResult{ChildPID: cmd.Process.Pid}
 	if opts.StopCh != nil {

@@ -64,9 +64,8 @@ func newRunCommand(out io.Writer) *cobra.Command {
 			if !restart.Valid() {
 				return fmt.Errorf("run: 非法 --restart 值 %q（可选：no|always|unless-stopped|on-failure）", opts.restart)
 			}
-			// 解析端口映射（网络侧生效；-v 卷仍为阶段 3 占位）。
-			mappings, err := parsePorts(opts.ports)
-			if err != nil {
+			// 提前校验端口映射（约占位；引擎在启动前据此实化 NAT）。
+			if _, err := parsePorts(opts.ports); err != nil {
 				return err
 			}
 			mounts, err := parseMounts(opts.volumes)
@@ -95,6 +94,8 @@ func newRunCommand(out io.Writer) *cobra.Command {
 				Detach:     opts.detach,
 				Ports:      opts.ports,
 				Volumes:    opts.volumes,
+				Network:    opts.network,
+				IP:         opts.ip,
 				MemoryMB:   opts.memoryMB,
 				CPUs:       opts.cpus,
 				PidsLimit:  opts.pidsLimit,
@@ -124,13 +125,9 @@ func newRunCommand(out io.Writer) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			// 网络接入：宿主机侧登记容器端点并实化端口 NAT。veth 注入容器
-			// 命名空间需运行时协作（见交接摘要）；此处负责数据层 + NAT。
-			if werr := wireNetwork(opts.dataDir, res.Container, opts.network, opts.ip, mappings); werr != nil {
-				slog.Warn("容器网络接入失败", "container", res.Container.ID, "err", werr)
-			}
+			// 网络接入在 engine.Run 内部（启动前）：分配 IP、登记端口并实化 NAT。
 			// 卷接入：为匿名/命名卷在卷管理器落盘并记入容器挂载（数据层）。
-			// 真实挂载点注入容器命名空间需运行时协作（见交接摘要）。
+			// 真实挂载点注入容器命名空间由运行时装配（见 1.2）。
 			if werr := wireVolumes(opts.dataDir, res.Container, mounts); werr != nil {
 				slog.Warn("卷接入失败", "container", res.Container.ID, "err", werr)
 			}
@@ -332,49 +329,6 @@ func atoi(s string) int {
 		n = n*10 + int(s[i]-'0')
 	}
 	return n
-}
-
-// wireNetwork 把刚创建的容器接入指定网络并实化端口 NAT。
-// 它只操作数据层与宿主 NAT；veth 进容器命名空间由运行时协作，不在本分支。
-func wireNetwork(dataDir string, cfg *store.ContainerConfig, netName, wantIP string, ports []*network.PortMapping) error {
-	if netName == "" {
-		netName = "boxli0"
-	}
-	if netName == "none" || netName == "host" {
-		// host/none 无端口 NAT。
-		if len(ports) > 0 {
-			slog.Warn("网络 %s 不支持端口映射，忽略 -p", "net", netName)
-		}
-		return nil
-	}
-	m, err := network.NewManager(dataDir)
-	if err != nil {
-		return err
-	}
-	// 接入网络（bridge 分配 IP）。
-	if _, err := m.Connect(netName, cfg.ID, cfg.Name, wantIP); err != nil {
-		return err
-	}
-	// 登记端口映射并实化 NAT。
-	if len(ports) > 0 {
-		if err := m.AllocatePorts(netName, cfg.ID, ports); err != nil {
-			_ = m.Disconnect(netName, cfg.ID)
-			return err
-		}
-		if err := m.ApplyNAT(netName); err != nil {
-			// NAT 失败不阻断容器运行（容器本身已启动），仅告警。
-			slog.Warn("实化网络 NAT 失败（可能需要 root 或 nft）", "net", netName, "err", err)
-		}
-	}
-	ep, err := m.Load(netName)
-	if err == nil {
-		for _, e := range ep.Endpoints {
-			if e.ContainerID == cfg.ID && e.IP != "" {
-				slog.Info("容器已接入网络", "net", netName, "ip", e.IP)
-			}
-		}
-	}
-	return nil
 }
 
 // wireVolumes 处理容器的卷：命名/匿名卷在卷管理器落盘并解析出源路径，

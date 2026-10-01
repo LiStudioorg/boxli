@@ -31,6 +31,31 @@ func (d Driver) Valid() bool {
 	return false
 }
 
+// NetMode 是容器启动时接入网络的方式（运行时装配用）。
+type NetMode string
+
+// 网络接入模式。
+const (
+	ModeBridge NetMode = "bridge"
+	ModeHost   NetMode = "host"
+	ModeNone   NetMode = "none"
+)
+
+// ParseNetMode 把网络名/模式串规整为接入模式：""|boxli0|bridge → bridge；
+// host → host（复用宿主网络栈）；none → none。其余名字视为自定义桥接网络。
+func ParseNetMode(n string) NetMode {
+	switch n {
+	case "", "boxli0", "bridge":
+		return ModeBridge
+	case "host":
+		return ModeHost
+	case "none":
+		return ModeNone
+	default:
+		return ModeBridge // 自定义网络名一律走桥接 veth。
+	}
+}
+
 // Proto 是端口映射协议。
 type Proto string
 

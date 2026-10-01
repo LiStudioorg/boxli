@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+
+	"github.com/LiStudioorg/boxli/internal/network"
 )
 
 // Linux 挂载常量（syscall 包未导出这些位）。
@@ -96,6 +98,14 @@ func RunInit() error {
 		return fmt.Errorf("卸载旧根: %w", err)
 	}
 	_ = syscall.Rmdir("/" + oldRoot)
+
+	// 7. 容器侧网络装配：赋值 IP/路由，把 DNS 指向网桥网关。此刻已在
+	//    容器 netns 与 rootfs 内；非 bridge 模式（host/none）跳过。
+	if mode, cid, name, ip, gw, hostname, prefix, ok := parseNetEnv(os.Environ()); ok && *mode == network.ModeBridge {
+		if err := network.ConfigurePeer(name, cid, ip, gw, prefix, hostname); err != nil {
+			return fmt.Errorf("配置容器网络失败: %w", err)
+		}
+	}
 
 	if err := syscall.Exec(cmdline[0], cmdline, env); err != nil {
 		return fmt.Errorf("exec %s: %w", cmdline[0], err)

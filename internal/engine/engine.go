@@ -54,6 +54,9 @@ type RunSpec struct {
 	// Ports / Volumes 阶段 3 占位：仅记录，运行时忽略（调用方告警）。
 	Ports   []string
 	Volumes []string
+	// Network 是接入的网络名（boxli0/自定义/host/none）；IP 为期望地址（可空）。
+	Network string
+	IP      string
 	// MemoryMB / CPUs / PidsLimit 阶段 3 占位：仅记录。
 	MemoryMB  int
 	CPUs      float64
@@ -133,6 +136,12 @@ func Run(ctx context.Context, st *store.Store, spec *RunSpec) (*RunResult, error
 		user = loaded.Config.User
 	}
 
+	// 端口映射解析（网络侧生效；错误直接返回，避免装了一半）。
+	ports, err := parsePorts(spec.Ports)
+	if err != nil {
+		return nil, err
+	}
+
 	cfg := &store.ContainerConfig{
 		ConfigVersion: 1,
 		ID:            id,
@@ -145,9 +154,17 @@ func Run(ctx context.Context, st *store.Store, spec *RunSpec) (*RunResult, error
 		Env:           env,
 		WorkingDir:    workdir,
 		User:          user,
+		Network:       spec.Network,
 		CreatedAt:     time.Now().UTC().Format(time.RFC3339),
 	}
 	if err := st.CreateContainer(cfg); err != nil {
+		return nil, err
+	}
+	// 容器已登记：接入网络（alloc IP）、登记端口并实化 NAT。失败时回滚断开，
+	// 避免残留半接入的端点；veth 进容器 netns 由运行时装配，见 runForeground/shim。
+	if err := wireNetworkBeforeStart(st, cfg, spec.Network, spec.IP, ports); err != nil {
+		disconnectContainer(st, cfg)
+		_ = st.RemoveContainer(cfg.ID)
 		return nil, err
 	}
 
@@ -245,11 +262,13 @@ func runForeground(ctx context.Context, st *store.Store, cfg *store.ContainerCon
 	}()
 
 	state := store.RuntimeState{ExitCode: -1, Running: true, StartedAt: time.Now().UTC().Format(time.RFC3339)}
+	env := append([]string{}, cfg.Env...)
+	env = append(env, netEnvFor(st, cfg, cfg.Hostname)...)
 	r, err := runtime.StartWith(&runtime.Config{
 		Rootfs:   cfg.Rootfs,
 		Hostname: cfg.Hostname,
 		Cmd:      cfg.Cmd,
-		Env:      cfg.Env,
+		Env:      env,
 	}, func(pid int) {
 		state.InitPID = pid
 		s := state

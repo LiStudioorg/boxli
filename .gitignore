@@ -32,3 +32,4 @@ Thumbs.db
 .gocache/
 .gomodcache/
 .gopath/
+.modcache/

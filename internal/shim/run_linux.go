@@ -74,11 +74,13 @@ func Run(ctx context.Context, o *Options) error {
 			return err
 		}
 
+		env := append([]string{}, cfg.Env...)
+		env = append(env, runtime.ResolveNetEnv(st.Root, cfg.Network, cfg.ID, cfg.Hostname)...)
 		res, err := runtime.StartWith(&runtime.Config{
 			Rootfs:   cfg.Rootfs,
 			Hostname: cfg.Hostname,
 			Cmd:      cfg.Cmd,
-			Env:      cfg.Env,
+			Env:      env,
 		}, func(pid int) {
 			state.InitPID = pid
 			// 容器已 fork 但尚未退出：立即持久化，running 期间 status/stop 可见 initPid。
