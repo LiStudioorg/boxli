@@ -6,11 +6,16 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/LiStudioorg/boxli/internal/runtime"
 )
 
 // Version 由 main 注入（可通过 -ldflags 覆盖），用于 --version。
@@ -38,21 +43,48 @@ func NewRootCommand(out, errOut io.Writer) *cobra.Command {
 		newImagesCommand(out),
 		newBootTestCommand(out),
 		newShutdownCommand(out),
+		newInitCommand(out),
+		newSpikeCommand(out),
 	)
 	return root
 }
 
 // Execute 运行命令树，返回进程退出码。调用方（main）负责 os.Exit。
+// 若本进程是被 fork 的容器 init（BOXLI_CHILD=1），跳过命令解析直接进初始化路径。
 func Execute() int {
+	setupLogging()
+	if runtime.IsInitProcess() {
+		if err := runtime.RunInit(); err != nil {
+			fmt.Fprintf(os.Stderr, "boxli init: %v\n", err)
+			return 1
+		}
+		return 0
+	}
 	root := NewRootCommand(os.Stdout, os.Stderr)
 	if err := root.Execute(); err != nil {
+		var ee interface{ ExitCode() int }
+		if errors.As(err, &ee) {
+			return ee.ExitCode()
+		}
 		fmt.Fprintf(os.Stderr, "boxli: %v\n", err)
 		return 1
 	}
 	return 0
 }
 
-// notImplemented 统一生成"骨架阶段未实现"错误，避免各命令文案漂移。
+// notImplemented 统一生成"尚未实现"错误，避免各命令文案漂移。
 func notImplemented(name string) error {
-	return fmt.Errorf("boxli %s: 尚未实现（阶段 1 骨架）", name)
+	return fmt.Errorf("boxli %s: 尚未实现", name)
+}
+
+// setupLogging 初始化 log/slog：默认 Warn 级别，BOXLI_LOG=debug|info 提升。
+func setupLogging() {
+	lvl := slog.LevelWarn
+	switch strings.ToLower(os.Getenv("BOXLI_LOG")) {
+	case "debug":
+		lvl = slog.LevelDebug
+	case "info":
+		lvl = slog.LevelInfo
+	}
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: lvl})))
 }
