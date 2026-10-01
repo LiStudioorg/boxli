@@ -7,6 +7,7 @@
 package boot
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -110,12 +111,32 @@ func PidAlive(pid int) bool {
 	if pid <= 0 {
 		return false
 	}
+	// 僵尸进程仍能通过 signal 0 探活，但它已经不干活了：宿主未回收时
+	// 必须判死，否则 boot 会把僵死 shim 当作"已在运行"而不重启容器。
+	if zombie, err := isZombie(pid); err == nil && zombie {
+		return false
+	}
 	p, err := os.FindProcess(pid)
 	if err != nil {
 		return false
 	}
 	err = p.Signal(syscall.Signal(0))
 	return err == nil || errors.Is(err, syscall.EPERM)
+}
+
+// isZombie 读取 /proc/<pid>/stat 判断进程是否处于僵尸态。
+// 非 Linux 或读取失败时返回错误，调用方按"未知"处理（退回 signal 探活）。
+func isZombie(pid int) (bool, error) {
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return false, err
+	}
+	// 格式：pid (comm) state ...；comm 可能含空格与括号，取最后一个 ')' 之后。
+	i := bytes.LastIndexByte(data, ')')
+	if i < 0 || i+2 >= len(data) {
+		return false, fmt.Errorf("解析 /proc/%d/stat 失败", pid)
+	}
+	return data[i+2] == 'Z', nil
 }
 
 // StopAll 优雅停止全部在运行的容器：向每个存活 shim 发 SIGTERM（shim 收到后

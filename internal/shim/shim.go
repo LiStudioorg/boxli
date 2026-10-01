@@ -18,9 +18,9 @@ const (
 	EnvStoreRoot = "BOXLI_STORE_ROOT" // 数据目录
 	EnvContainer = "BOXLI_CONTAINER"  // 容器 ID
 
-	markerValue   = "1"
-	logFileName   = "container.log"  // 容器与 shim 的合并日志（append）
-	forceKillHold = 10 * time.Second // init 收到 SIGTERM 后强杀宽限
+	markerValue = "1"
+	logFileName = "container.log"  // 容器与 shim 的合并日志（append）
+	GraceHold   = 10 * time.Second // init 收到 SIGTERM 后强杀宽限
 )
 
 // ErrShimNotRequested 表示当前进程没有 shim 标记。

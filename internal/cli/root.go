@@ -42,6 +42,7 @@ func NewRootCommand(out, errOut io.Writer) *cobra.Command {
 	root.AddCommand(
 		newPullCommand(out),
 		newRunCommand(out),
+		newStopCommand(out),
 		newPsCommand(out),
 		newExecCommand(out),
 		newImagesCommand(out),

@@ -6,8 +6,10 @@ package boot
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/LiStudioorg/boxli/internal/store"
 )
@@ -187,5 +189,37 @@ func TestPidAlive(t *testing.T) {
 	}
 	if PidAlive(4194303) {
 		t.Log("警告：PID 4194303 竟存在（线程上限配置特殊），忽略")
+	}
+}
+
+// TestPidAliveZombie 锁定僵尸进程判死语义：kill(pid,0) 对僵尸仍成功，
+// 但僵死 shim 必须被视为"未运行"，否则 boot 会跳过重启。
+func TestPidAliveZombie(t *testing.T) {
+	cmd := exec.Command("true")
+	if err := cmd.Start(); err != nil {
+		t.Skipf("无法启动测试进程: %v", err)
+	}
+	pid := cmd.Process.Pid
+	// 子进程已退出但父进程未 Wait：此时为僵尸态。
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if z, err := isZombie(pid); err == nil && z {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	z, err := isZombie(pid)
+	if err != nil {
+		t.Skipf("本环境无法读取 /proc/<pid>/stat: %v", err)
+	}
+	if !z {
+		t.Skip("未能进入僵尸态，跳过")
+	}
+	if PidAlive(pid) {
+		t.Fatal("僵尸进程必须判死")
+	}
+	_, _ = cmd.Process.Wait() // 回收
+	if PidAlive(pid) {
+		t.Fatal("回收后必须判死")
 	}
 }

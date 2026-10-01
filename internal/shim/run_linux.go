@@ -93,7 +93,7 @@ func Run(ctx context.Context, o *Options) error {
 			Stdout: out,
 			Stderr: errOut,
 			StopCh: sigCtx.Done(), // shim 被停 → runtime 向 init 转发 SIGTERM/SIGKILL
-			Grace:  forceKillHold,
+			Grace:  GraceHold,
 		})
 		state.Running = false
 		if err != nil {
