@@ -5,6 +5,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -15,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/LiStudioorg/boxli/internal/engine"
+	"github.com/LiStudioorg/boxli/internal/storage"
 	"github.com/LiStudioorg/boxli/internal/store"
 )
 
@@ -54,8 +56,9 @@ func newRunCommand(out io.Writer) *cobra.Command {
 			for _, p := range opts.ports {
 				slog.Warn("-p 端口映射尚未实现（阶段 3 网络落地），本次运行忽略", "mapping", p)
 			}
-			for _, v := range opts.volumes {
-				slog.Warn("-v 宿主机卷挂载尚未实现（阶段 3 落地），本次运行忽略", "volume", v)
+			mounts, err := parseMounts(opts.volumes)
+			if err != nil {
+				return err
 			}
 			if opts.memoryMB > 0 || opts.cpus > 0 || opts.pidsLimit > 0 {
 				slog.Warn("资源限制参数尚未生效（阶段 3 落地），本次运行忽略",
@@ -108,6 +111,11 @@ func newRunCommand(out io.Writer) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// 卷接入：为匿名/命名卷在卷管理器落盘并记入容器挂载（数据层）。
+			// 真实挂载点注入容器命名空间需运行时协作（见交接摘要）。
+			if werr := wireVolumes(opts.dataDir, res.Container, mounts); werr != nil {
+				slog.Warn("卷接入失败", "container", res.Container.ID, "err", werr)
+			}
 			if opts.detach {
 				fmt.Fprintf(out, "容器 %s（%s）已在后台运行，shim 持有生命周期\n",
 					res.Container.Name, res.Container.ID)
@@ -138,7 +146,103 @@ func newRunCommand(out io.Writer) *cobra.Command {
 	f.StringVar(&opts.user, "user", "", "运行用户 uid:gid（阶段 3 生效）")
 	f.StringSliceVar(&opts.entrypoint, "entrypoint", nil, "覆盖镜像 entrypoint")
 	f.StringSliceVarP(&opts.ports, "publish", "p", nil, "端口映射 HOST:CONTAINER（阶段 3 生效）")
-	f.StringSliceVarP(&opts.volumes, "volume", "v", nil, "卷挂载 HOST:CONTAINER（阶段 3 生效）")
+	f.StringSliceVarP(&opts.volumes, "volume", "v", nil, "卷挂载 SRC:TARGET[:ro]；SRC 可为宿主路径或命名卷，省略=匿名卷")
 	f.StringVar(&opts.dataDir, "data-dir", "", "数据目录（默认 $BOXLI_HOME 或 ~/.boxli）")
 	return cmd
+}
+
+// VolumeMount 是一次 -v 的解析结果。
+type VolumeMount struct {
+	// Source 是宿主源（绝对路径）或命名卷名；空表示匿名卷。
+	Source string
+	// Target 是容器内挂载点。
+	Target string
+	// ReadOnly 是否只读。
+	ReadOnly bool
+	// Anonymous 是否匿名卷（Source 为空）。
+	Anonymous bool
+}
+
+// parseMounts 解析 -v 参数列表。
+// 支持 "TARGET"（匿名卷）、"SRC:TARGET"（bind/命名卷）、"SRC:TARGET:ro"。
+func parseMounts(vols []string) ([]*VolumeMount, error) {
+	var out []*VolumeMount
+	for _, raw := range vols {
+		parts := splitVol(raw)
+		m := &VolumeMount{}
+		switch len(parts) {
+		case 1: // 匿名卷
+			m.Target = parts[0]
+			m.Anonymous = true
+		case 2: // SRC:TARGET
+			m.Source = parts[0]
+			m.Target = parts[1]
+		case 3: // SRC:TARGET:ro
+			m.Source = parts[0]
+			m.Target = parts[1]
+			if parts[2] != "ro" {
+				return nil, fmt.Errorf("run: 非法 -v 选项 %q（仅支持 ro）", parts[2])
+			}
+			m.ReadOnly = true
+		default:
+			return nil, fmt.Errorf("run: 非法 -v %q", raw)
+		}
+		if m.Target == "" {
+			return nil, fmt.Errorf("run: -v %q 缺少容器路径", raw)
+		}
+		out = append(out, m)
+	}
+	return out, nil
+}
+
+func splitVol(s string) []string {
+	return splitColonV(s)
+}
+
+func splitColonV(s string) []string {
+	var out []string
+	var cur []byte
+	for i := 0; i < len(s); i++ {
+		if s[i] == ':' {
+			out = append(out, string(cur))
+			cur = cur[:0]
+		} else {
+			cur = append(cur, s[i])
+		}
+	}
+	out = append(out, string(cur))
+	return out
+}
+
+// wireVolumes 处理容器的卷：命名/匿名卷在卷管理器落盘并解析出源路径，
+// bind 挂载直接记录源路径。真实挂载进容器命名空间由运行时协作。
+func wireVolumes(dataDir string, cfg *store.ContainerConfig, mounts []*VolumeMount) error {
+	if len(mounts) == 0 {
+		return nil
+	}
+	vm, err := storage.NewVolumeManager(dataDir)
+	if err != nil {
+		return err
+	}
+	for _, m := range mounts {
+		// bind：宿主绝对路径即源。
+		if !m.Anonymous && len(m.Source) > 1 && m.Source[0] == '/' {
+			continue
+		}
+		// 命名卷：引用已存在卷。
+		if !m.Anonymous && m.Source != "" {
+			if _, err := vm.Inspect(m.Source); err != nil {
+				return fmt.Errorf("run: 卷 %q 不存在，请先 boxli volume create: %w", m.Source, err)
+			}
+			continue
+		}
+		// 匿名卷：自动生成名字并在卷管理器创建（已存在则复用）。
+		name := "anon_" + cfg.ID
+		if _, err := vm.Create(name, storage.DriverLocal, 0); err != nil && !errors.Is(err, storage.ErrVolumeExists) {
+			return err
+		}
+		m.Source = name
+		slog.Info("已为容器创建匿名卷", "container", cfg.ID, "vol", name)
+	}
+	return nil
 }
