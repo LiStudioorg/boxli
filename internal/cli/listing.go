@@ -38,16 +38,3 @@ func newExecCommand(out io.Writer) *cobra.Command {
 	cmd.Flags().BoolVarP(&detach, "detach", "d", false, "不等候命令退出")
 	return cmd
 }
-
-// newImagesCommand 实现 `boxli images`。
-func newImagesCommand(out io.Writer) *cobra.Command {
-	return &cobra.Command{
-		Use:     "images",
-		Aliases: []string{"image", "im"},
-		Short:   "列出本地 .boxli 镜像",
-		Args:    cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return notImplemented("images")
-		},
-	}
-}
