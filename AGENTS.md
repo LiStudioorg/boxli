@@ -35,6 +35,8 @@ boxli/
 │   └── resource/        # 资源限制与采集：CPU / 内存 / PID
 ├── pkg/
 │   └── sdk/             # 对外 Go SDK，供第三方以库方式驱动 Boxli
+├── docs/
+│   └── image-spec.md    # .boxli 镜像格式规范（单一事实来源，改格式先改这里）
 ├── go.mod
 ├── LICENSE              # AGPL-3.0
 ├── AGENTS.md
@@ -172,6 +174,29 @@ CGO_ENABLED=0 GOOS=android GOARCH=arm64 go build -o boxli-android-arm64 .
 CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -o boxli-darwin-arm64 .
 ```
 
-## 当前阶段：阶段 0
+## 镜像格式：唯一规范在 docs/image-spec.md
 
-阶段 0 仅做项目初始化：目录骨架、`go.mod`（零依赖）、文档与占位包。`main.go` 只打印版本号，**尚无任何容器运行时代码**。下一阶段（阶段 1）目标：`.boxli` 镜像格式定义与 `boxli pull` / `boxli images`。
+`.boxli` = 外层未压缩 tar（内含 `index.json` + `layers/NNNNNN.<name>.tar.gz` + 可选 `blobs/`）。
+
+- 规范文档：[docs/image-spec.md](docs/image-spec.md)，它是镜像格式的**单一事实来源**。
+- 任何格式改动必须**先改规范、再改代码**，且只允许通过 `specVersion` 做不兼容升级。
+- 解析器实现位于 `internal/image`，必须实现规范第 4 节全部拒绝规则，禁止"尽力猜测"式宽容解析。
+- digest 仅允许 `sha256:`；`index.json` 是唯一元数据源。
+
+## 依赖白名单
+
+`go.mod` 中的第三方依赖需要逐条批准，白名单如下：
+
+| 依赖 | 用途 | 批准范围 |
+| --- | --- | --- |
+| `github.com/spf13/cobra` | CLI 命令树 | 只允许 `main.go` 与命令注册代码引用 |
+
+除此之外的第三方依赖一律不批；容器 / 镜像 / OCI / cgroups 相关库永久禁止（见"禁止事项"）。日志、配置、压缩、归档一律用标准库（`log/slog`、`archive/tar`、`compress/gzip`、`encoding/json`、`crypto/sha256`）。
+
+## 当前阶段：阶段 1
+
+阶段 0 已完成：目录骨架、`go.mod`、文档、占位包，并已发布 `v0.1.0` 被 pkg.go.dev 收录。
+
+**阶段 1 进行中**：`.boxli` 镜像格式定义、cobra CLI 骨架、`internal/image` 清单解析器、`boxli pull` 本地 `.boxli` 文件支持（`boxli run` / `ps` / `exec` 为骨架占位，明确返回未实现）。
+
+阶段 2 目标（未开始）：层解包与合并（`internal/storage`）、`boxli run` 真实运行时、`boxli boot` 自启机制落地。
