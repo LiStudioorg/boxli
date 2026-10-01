@@ -9,21 +9,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// newPsCommand 实现 `boxli ps`。
-func newPsCommand(out io.Writer) *cobra.Command {
-	var all bool
-	cmd := &cobra.Command{
-		Use:   "ps",
-		Short: "列出容器",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return notImplemented("ps")
-		},
-	}
-	cmd.Flags().BoolVarP(&all, "all", "a", false, "包含已停止的容器")
-	return cmd
-}
-
 // newExecCommand 实现 `boxli exec`。
 func newExecCommand(out io.Writer) *cobra.Command {
 	var detach bool

@@ -40,7 +40,11 @@ func newRunCommand(out io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "run [flags] <image> [command...]",
 		Short: "创建并启动容器",
-		Args:  cobra.MinimumNArgs(1),
+		Long: "创建并启动容器：镜像查找 → 层解包合并 rootfs → 写容器状态 → 启动。\n\n" +
+			"默认前台运行，stdio 直连容器，Ctrl+C 停止容器；-d 后台运行并打印容器 ID。\n\n" +
+			"注意：run 自身的 flag 必须写在镜像引用之前，镜像之后的内容一律作为容器命令\n" +
+			"原样传入（与 Docker 一致）。例如 `boxli run -e FOO=bar img sh -c 'echo $FOO'`。",
+		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			restart := store.Restart(opts.restart)
 			if !restart.Valid() {
@@ -118,6 +122,9 @@ func newRunCommand(out io.Writer) *cobra.Command {
 	f := cmd.Flags()
 	// 容器命令里的 -c/-e 等必须原样透传（`boxli run img sh -c 'exit 1'`），
 	// 故第一个位置参数（镜像引用）之后不再解析 flag。
+	//
+	// 代价与 Docker 一致：所有 run 自己的 flag 必须写在镜像引用之前，
+	// 写在之后的会被当作容器命令参数。help 里明确写出这一点。
 	f.SetInterspersed(false)
 	f.BoolVarP(&opts.detach, "detach", "d", false, "后台运行，打印容器 ID")
 	f.StringVar(&opts.restart, "restart", "no", "重启策略：no|always|unless-stopped|on-failure")
