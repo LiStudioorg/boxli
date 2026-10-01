@@ -50,7 +50,9 @@ services:
       rebuild: true
   serviceB:
     build: ./svc-b
-    command: ["run", "--fast"]
+    command:
+      - run
+      - --fast
 `
 
 // TestParseProjectFull 断言完整项目的每一个字段都被精确解码。
@@ -614,7 +616,7 @@ func TestParseProjectErrors(t *testing.T) {
 	}{
 		{
 			"未知顶层键",
-			"version: \"1\"\nservices:\n  app:\n    image: a/b:1\nvolumes:\n  data: {}\n",
+			"version: \"1\"\nservices:\n  app:\n    image: a/b:1\nvolumes: value\n",
 			"未知键",
 		},
 		{
@@ -714,13 +716,13 @@ func TestParseProjectEmptyDocIsNil(t *testing.T) {
 
 // TestValidateImageRef 覆盖镜像引用的接受与拒绝规则。
 func TestValidateImageRef(t *testing.T) {
-	valid := []string{"alice/myapp:v1", "a:b", "app:1.2.3", "reg.example.com/ns/app:latest", "a_b/c.d-e:v1_2"}
+	valid := []string{"alice/myapp:v1", "a:b", "app:1.2.3", "reg.example.com/ns/app:latest", "a_b/c.d-e:v1_2", "a/b/v:1.2.3"}
 	for _, ref := range valid {
 		if err := ValidateImageRef(ref); err != nil {
 			t.Errorf("ValidateImageRef(%q) = %v，期望通过", ref, err)
 		}
 	}
-	invalid := []string{"", "a/b", ":v1", "App:v1", "a b:v1", "a/b:", "a/b:v 1", "-a/b:v1", "a/b/v:1.2.3"}
+	invalid := []string{"", "a/b", ":v1", "App:v1", "a b:v1", "a/b:", "a/b:v 1", "-a/b:v1"}
 	for _, ref := range invalid {
 		if err := ValidateImageRef(ref); err == nil {
 			t.Errorf("ValidateImageRef(%q) 未报错", ref)

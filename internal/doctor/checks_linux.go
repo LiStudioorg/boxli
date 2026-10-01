@@ -91,26 +91,12 @@ func (linuxChecker) Smoke() SmokeFunc {
 
 // Checks 实现 Checker，按稳定顺序返回全部 Linux 检查项。
 // Version 未注入时（Options.Version 为空）binary.version 会提示版本未知。
-func (linuxChecker) Checks() []Check {
-	version := currentVersion(&linuxCheckerProbe{})
-	_ = version
-	return linuxCheckList("")
+func (l linuxChecker) Checks() []Check {
+	return linuxCheckList(l.version)
 }
 
 // linuxCheckList 按稳定顺序构造 Linux 检查项。
 func linuxCheckList(version string) []Check {
-	return []Check{
-		kernelVersionCheck(),
-		kernelNamespacesCheck(),
-		cgroupsMountCheck(),
-		cgroupsControllersCheck(),
-		systemdCheck(),
-		dataDirCheck(),
-		layersCheck(),
-		binaryCheck(version),
-		archCheck(),
-	}
-}
 	return []Check{
 		kernelVersionCheck(),
 		kernelNamespacesCheck(),
@@ -701,7 +687,7 @@ func dataDirCheck(version string) Check {
 		usedPct = float64(total-free) / float64(total) * 100
 	}
 	c.Detail = fmt.Sprintf("%s 可写，剩余 %s / 共 %s（已用 %.1f%%）",
-		dir, humanBytes(free), humanBytes(total), usedPct)
+		dir, humanBytes(int64(free)), humanBytes(int64(total)), usedPct)
 	if total > 0 && usedPct >= 90 {
 		c.Status = StatusWarn
 		c.Hint = fmt.Sprintf("磁盘接近写满，清理镜像与容器：`boxli rm -a` 或删除 %s/layers 中的无用层", dir)

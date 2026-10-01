@@ -206,7 +206,7 @@ type smokeProvider interface {
 
 // SmokeFunc 是可选的真实容器冒烟测试。返回空字符串表示真实测试通过；
 // 返回非空字符串表示无法真实测试（将记为 StatusSkip，并带上 --test-run 提示）。
-type SmokeFunc func(ctx context.Context) (reason string)
+type SmokeFunc func(ctx context.Context) (reason string, err error)
 
 // Options 配置一次自检。
 type Options struct {

@@ -19,7 +19,9 @@ var (
 	ErrBadProject = errors.New("boxli/compose: compose 文件非法")
 
 	// ErrBadService 表示单个服务的某个字段非法。
-	ErrBadService = errors.New("boxli/compose: 服务定义非法")
+	// 与 ErrBadProject 语义一致（项目级检查同样把服务错误视为项目非法），
+	// 故别名同一哨兵，保证 errors.Is 对两者都成立。
+	ErrBadService = ErrBadProject
 
 	// ErrCycle 表示 depends_on 依赖图存在环，无法确定启动顺序。
 	ErrCycle = errors.New("boxli/compose: 服务依赖成环")

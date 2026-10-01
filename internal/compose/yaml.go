@@ -88,13 +88,14 @@ func scanLines(data []byte) ([]yamlLine, error) {
 		for indent < len(s) && s[indent] == ' ' {
 			indent++
 		}
+		body := strings.TrimRight(s[indent:], " \t")
+		if body == "" || strings.HasPrefix(body, "#") {
+			// 空行 / 整行空白（含含制表符的空白）或整行注释：跳过。
+			continue
+		}
 		if indent < len(s) && s[indent] == '\t' {
 			return nil, fmt.Errorf("第 %d 行第 %d 列: 缩进禁止使用制表符（Tab），请改用空格: %w",
 				num, indent+1, ErrYAML)
-		}
-		body := strings.TrimRight(s[indent:], " \t")
-		if body == "" || strings.HasPrefix(body, "#") {
-			continue
 		}
 		if strings.HasPrefix(body, "\t") {
 			return nil, fmt.Errorf("第 %d 行: 内容中禁止出现制表符: %w", num, ErrYAML)
@@ -199,7 +200,7 @@ func (p *yamlParser) parseSequence(indent int) ([]any, error) {
 		p.pos++
 		if seqItemHasChildMapping(p, ln.indent) {
 			// 项的其余键写在更深一层缩进里。
-		more, err := p.parseMappingExtend(ln.indent+yamlIndent, m, ln.num)
+			more, err := p.parseMappingExtend(ln.indent+yamlIndent, m, ln.num)
 			if err != nil {
 				return nil, err
 			}

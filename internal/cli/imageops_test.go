@@ -427,4 +427,3 @@ func tarNames(gzPath string) ([]string, error) {
 	}
 	return names, nil
 }
-
