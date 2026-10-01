@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/LiStudioorg/boxli/internal/engine"
+	"github.com/LiStudioorg/boxli/internal/resource"
 	"github.com/LiStudioorg/boxli/internal/store"
 )
 
@@ -22,20 +23,28 @@ import (
 // 状态 → 前台持有或后台 fork shim。编排逻辑在 internal/engine。
 func newRunCommand(out io.Writer) *cobra.Command {
 	var opts struct {
-		detach     bool
-		restart    string
-		name       string
-		hostname   string
-		memoryMB   int
-		cpus       float64
-		pidsLimit  int
-		env        []string
-		workdir    string
-		user       string
-		entrypoint []string
-		ports      []string
-		volumes    []string
-		dataDir    string
+		detach       bool
+		restart      string
+		name         string
+		hostname     string
+		memoryMB     int
+		memorySwapMB int
+		memoryResMB  int
+		cpus         float64
+		pidsLimit    int
+		cpuset       string
+		blkioWeight  int
+		storageMB    int
+		networkBw    string
+		gpu          int
+		npu          int
+		env          []string
+		workdir      string
+		user         string
+		entrypoint   []string
+		ports        []string
+		volumes      []string
+		dataDir      string
 	}
 	cmd := &cobra.Command{
 		Use:   "run [flags] <image> [command...]",
@@ -57,9 +66,9 @@ func newRunCommand(out io.Writer) *cobra.Command {
 			for _, v := range opts.volumes {
 				slog.Warn("-v 宿主机卷挂载尚未实现（阶段 3 落地），本次运行忽略", "volume", v)
 			}
-			if opts.memoryMB > 0 || opts.cpus > 0 || opts.pidsLimit > 0 {
-				slog.Warn("资源限制参数尚未生效（阶段 3 落地），本次运行忽略",
-					"memoryMB", opts.memoryMB, "cpus", opts.cpus, "pidsLimit", opts.pidsLimit)
+			lims, err := runLimits(opts.memoryMB, opts.memorySwapMB, opts.memoryResMB, opts.cpus, opts.pidsLimit, opts.cpuset, opts.blkioWeight, opts.storageMB, opts.networkBw, opts.gpu, opts.npu)
+			if err != nil {
+				return err
 			}
 
 			st, err := store.Open(opts.dataDir)
@@ -108,6 +117,12 @@ func newRunCommand(out io.Writer) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// 资源限制：为容器创建 cgroup 并写入；无权限/非 Linux 时降级告警。
+			if !lims.Empty() {
+				if _, serr := resource.Setup(res.Container.ID, lims); serr != nil {
+					slog.Warn("应用资源限制失败（可能需要 root 或 cgroups v2）", "container", res.Container.ID, "err", serr)
+				}
+			}
 			if opts.detach {
 				fmt.Fprintf(out, "容器 %s（%s）已在后台运行，shim 持有生命周期\n",
 					res.Container.Name, res.Container.ID)
@@ -130,9 +145,17 @@ func newRunCommand(out io.Writer) *cobra.Command {
 	f.StringVar(&opts.restart, "restart", "no", "重启策略：no|always|unless-stopped|on-failure")
 	f.StringVar(&opts.name, "name", "", "容器名（默认自动生成）")
 	f.StringVar(&opts.hostname, "hostname", "", "容器主机名（默认取容器名）")
-	f.IntVar(&opts.memoryMB, "memory", 0, "内存上限（MiB，0=不限制；阶段 3 生效）")
-	f.Float64Var(&opts.cpus, "cpus", 0, "CPU 配额（核数，0=不限制；阶段 3 生效）")
-	f.IntVar(&opts.pidsLimit, "pids-limit", 0, "进程数上限（0=不限制；阶段 3 生效）")
+	f.IntVar(&opts.memoryMB, "memory", 0, "内存上限（MiB，0=不限制）")
+	f.IntVar(&opts.memorySwapMB, "memory-swap", 0, "内存+swap 总上限（MiB，-1=不限制 swap）")
+	f.IntVar(&opts.memoryResMB, "memory-reservation", 0, "内存软限制（MiB，0=不限制）")
+	f.Float64Var(&opts.cpus, "cpus", 0, "CPU 配额（核数，0=不限制）")
+	f.StringVar(&opts.cpuset, "cpuset-cpus", "", "允许使用的 CPU 列表（如 0-3,7）")
+	f.IntVar(&opts.pidsLimit, "pids-limit", 0, "进程数上限（0=不限制）")
+	f.IntVar(&opts.blkioWeight, "blkio-weight", 0, "块设备相对权重 [10,1000]，0=不设置")
+	f.IntVar(&opts.storageMB, "storage", 0, "可写层存储配额（MiB，0=不限制）")
+	f.StringVar(&opts.networkBw, "network-bandwidth", "", "出向带宽上限（如 10mbps）")
+	f.IntVar(&opts.gpu, "gpu", 0, "直通 GPU 设备数（0=不直通）")
+	f.IntVar(&opts.npu, "npu", 0, "直通 NPU 设备数（0=不直通）")
 	f.StringArrayVarP(&opts.env, "env", "e", nil, "环境变量 KEY=VALUE，可重复")
 	f.StringVar(&opts.workdir, "workdir", "", "工作目录")
 	f.StringVar(&opts.user, "user", "", "运行用户 uid:gid（阶段 3 生效）")
@@ -141,4 +164,49 @@ func newRunCommand(out io.Writer) *cobra.Command {
 	f.StringSliceVarP(&opts.volumes, "volume", "v", nil, "卷挂载 HOST:CONTAINER（阶段 3 生效）")
 	f.StringVar(&opts.dataDir, "data-dir", "", "数据目录（默认 $BOXLI_HOME 或 ~/.boxli）")
 	return cmd
+}
+
+// runLimits 把 run 的 CLI 资源参数翻译成 resource.Limits。
+func runLimits(memoryMB, memorySwapMB, memoryResMB int, cpus float64, pidsLimit int,
+	cpuset string, blkioWeight, storageMB int, networkBw string, gpu, npu int,
+) (*resource.Limits, error) {
+	l := &resource.Limits{}
+	mb := func(v int) int64 { return int64(v) * 1024 * 1024 }
+	if memoryMB > 0 {
+		l.Memory = mb(memoryMB)
+	}
+	if memoryResMB > 0 {
+		l.MemoryReservation = mb(memoryResMB)
+	}
+	l.MemorySwap = mb(memorySwapMB)
+	if memorySwapMB == -1 {
+		l.MemorySwap = -1
+	}
+	if cpus > 0 {
+		l.CPUs = cpus
+	}
+	l.CPUSet = cpuset
+	if pidsLimit > 0 {
+		l.PidsLimit = int64(pidsLimit)
+	}
+	if blkioWeight > 0 {
+		l.BlkioWeight = int64(blkioWeight)
+	}
+	if storageMB > 0 {
+		l.Storage = mb(storageMB)
+	}
+	if networkBw != "" {
+		v, err := resource.ParseBandwidth(networkBw)
+		if err != nil {
+			return nil, fmt.Errorf("run: %w", err)
+		}
+		l.NetworkBandwidth = v
+	}
+	if gpu > 0 {
+		l.GPU = []resource.DeviceRequest{{Kind: "gpu", Count: gpu}}
+	}
+	if npu > 0 {
+		l.NPU = []resource.DeviceRequest{{Kind: "npu", Count: npu}}
+	}
+	return l, nil
 }
