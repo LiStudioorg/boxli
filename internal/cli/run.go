@@ -5,7 +5,6 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -18,7 +17,6 @@ import (
 	"github.com/LiStudioorg/boxli/internal/engine"
 	"github.com/LiStudioorg/boxli/internal/network"
 	"github.com/LiStudioorg/boxli/internal/resource"
-	"github.com/LiStudioorg/boxli/internal/storage"
 	"github.com/LiStudioorg/boxli/internal/store"
 )
 
@@ -68,8 +66,7 @@ func newRunCommand(out io.Writer) *cobra.Command {
 			if _, err := parsePorts(opts.ports); err != nil {
 				return err
 			}
-			mounts, err := parseMounts(opts.volumes)
-			if err != nil {
+			if _, err := parseMounts(opts.volumes); err != nil {
 				return err
 			}
 			lims, err := runLimits(opts.memoryMB, opts.memorySwapMB, opts.memoryResMB, opts.cpus, opts.pidsLimit, opts.cpuset, opts.blkioWeight, opts.storageMB, opts.networkBw, opts.gpu, opts.npu)
@@ -125,12 +122,9 @@ func newRunCommand(out io.Writer) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			// 网络接入在 engine.Run 内部（启动前）：分配 IP、登记端口并实化 NAT。
-			// 卷接入：为匿名/命名卷在卷管理器落盘并记入容器挂载（数据层）。
-			// 真实挂载点注入容器命名空间由运行时装配（见 1.2）。
-			if werr := wireVolumes(opts.dataDir, res.Container, mounts); werr != nil {
-				slog.Warn("卷接入失败", "container", res.Container.ID, "err", werr)
-			}
+			// 网络接入与卷挂载均在 engine.Run 内部（启动前）完成：
+			//   - 网络：分配 IP、登记端口并实化 NAT，veth 进容器 netns；
+			//   - 卷：解析 -v，匿名/命名卷补齐源路径，运行时 bind 进容器 mount ns。
 			// 资源限制：为容器创建 cgroup 并写入；无权限/非 Linux 时降级告警。
 			if !lims.Empty() {
 				if _, serr := resource.Setup(res.Container.ID, lims); serr != nil {
@@ -329,39 +323,6 @@ func atoi(s string) int {
 		n = n*10 + int(s[i]-'0')
 	}
 	return n
-}
-
-// wireVolumes 处理容器的卷：命名/匿名卷在卷管理器落盘并解析出源路径，
-// bind 挂载直接记录源路径。真实挂载进容器命名空间由运行时协作。
-func wireVolumes(dataDir string, cfg *store.ContainerConfig, mounts []*VolumeMount) error {
-	if len(mounts) == 0 {
-		return nil
-	}
-	vm, err := storage.NewVolumeManager(dataDir)
-	if err != nil {
-		return err
-	}
-	for _, m := range mounts {
-		// bind：宿主绝对路径即源。
-		if !m.Anonymous && len(m.Source) > 1 && m.Source[0] == '/' {
-			continue
-		}
-		// 命名卷：引用已存在卷。
-		if !m.Anonymous && m.Source != "" {
-			if _, err := vm.Inspect(m.Source); err != nil {
-				return fmt.Errorf("run: 卷 %q 不存在，请先 boxli volume create: %w", m.Source, err)
-			}
-			continue
-		}
-		// 匿名卷：自动生成名字并在卷管理器创建（已存在则复用）。
-		name := "anon_" + cfg.ID
-		if _, err := vm.Create(name, storage.DriverLocal, 0); err != nil && !errors.Is(err, storage.ErrVolumeExists) {
-			return err
-		}
-		m.Source = name
-		slog.Info("已为容器创建匿名卷", "container", cfg.ID, "vol", name)
-	}
-	return nil
 }
 
 // runLimits 把 run 的 CLI 资源参数翻译成 resource.Limits。

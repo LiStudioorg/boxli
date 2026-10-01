@@ -167,6 +167,19 @@ func Run(ctx context.Context, st *store.Store, spec *RunSpec) (*RunResult, error
 		_ = st.RemoveContainer(cfg.ID)
 		return nil, err
 	}
+	// 卷接入：解析 -v 并落盘已解析挂载（匿名/命名卷补齐源路径）；运行时在
+	// pivot_root 前把源 bind 进容器 mount namespace。
+	volMounts, err := parseVolumes(spec.Volumes)
+	if err != nil {
+		disconnectContainer(st, cfg)
+		_ = st.RemoveContainer(cfg.ID)
+		return nil, err
+	}
+	if err := wireVolumesBeforeStart(st, cfg, volMounts); err != nil {
+		disconnectContainer(st, cfg)
+		_ = st.RemoveContainer(cfg.ID)
+		return nil, err
+	}
 
 	res := &RunResult{Container: cfg, ShortID: id, Foreground: !spec.Detach, ExitCode: -1}
 	if err := prepareAndStartFn(ctx, st, cfg, res); err != nil {
@@ -264,6 +277,7 @@ func runForeground(ctx context.Context, st *store.Store, cfg *store.ContainerCon
 	state := store.RuntimeState{ExitCode: -1, Running: true, StartedAt: time.Now().UTC().Format(time.RFC3339)}
 	env := append([]string{}, cfg.Env...)
 	env = append(env, netEnvFor(st, cfg, cfg.Hostname)...)
+	env = append(env, runtime.MountEnv(cfg.Mounts)...)
 	r, err := runtime.StartWith(&runtime.Config{
 		Rootfs:   cfg.Rootfs,
 		Hostname: cfg.Hostname,

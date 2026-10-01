@@ -46,6 +46,16 @@ func (r Restart) BootEligible() bool {
 	return r == RestartAlways || r == RestartUnlessStoped
 }
 
+// Mount 是一条容器卷挂载（已解析出宿主源路径）。
+type Mount struct {
+	// Source 是宿主源绝对路径（bind 挂载源；卷为卷数据目录）。
+	Source string `json:"source"`
+	// Target 是容器内挂载点（绝对路径）。
+	Target string `json:"target"`
+	// ReadOnly 是否以只读方式挂载（:ro）。
+	ReadOnly bool `json:"readOnly,omitempty"`
+}
+
 // ContainerConfig 是容器目录里 config.json 的内容：run/boot/shim 三方共用的
 // 单一事实来源。字段只增不改；不兼容变更须升 ConfigVersion。
 type ContainerConfig struct {
@@ -75,6 +85,8 @@ type ContainerConfig struct {
 	Network string `json:"network,omitempty"`
 	// IP 是容器在桥接网络上的分配 IP；host/none 为空。
 	IP string `json:"ip,omitempty"`
+	// Mounts 是已解析的卷挂载列表（源路径就绪，运行时挂载）。
+	Mounts []Mount `json:"mounts,omitempty"`
 	// CreatedAt 是创建时间（UTC，RFC 3339）。
 	CreatedAt string `json:"createdAt"`
 }

@@ -76,6 +76,11 @@ func RunInit() error {
 	if err := syscall.Mount(rootfs, rootfs, "", uintptr(msRec|msBind), ""); err != nil {
 		return fmt.Errorf("bind rootfs %s: %w", rootfs, err)
 	}
+	// 3.5 卷挂载：把宿主任一命名卷/匿名卷/bind 源 bind 或 tmpfs 进 rootfs
+	//    目标路径。必须在 pivot_root 之前，保证挂载随新根一同进入容器。
+	if err := mountRootfsVolumes(rootfs); err != nil {
+		return err
+	}
 	// 4. 先挂 procfs（早于 pivot_root）。部分环境（如嵌套容器）在 pivot 并卸载旧根后
 	//    拒绝再建 proc 超块；pivot 前挂载得到的是绑定本 PID namespace 的全新 procfs，
 	//    随 rootfs 一起进入新根，语义完全等价。
@@ -138,6 +143,45 @@ func bindHostDevices(rootfs string) error {
 		if err := syscall.Mount(src, dst, "", msBind, ""); err != nil {
 			return fmt.Errorf("bind %s: %w", src, err)
 		}
+	}
+	return nil
+}
+
+// mountRootfsVolumes 把 -v 解析出的挂载列表 bind 进 rootfs 目标路径。
+// 在 pivot_root 之前调用：rootfs 已 bind 为挂载点，挂载随新根进入容器。
+// 目标路径必须是容器内绝对路径，且经 Clean 后不得逃逸出 rootfs。
+func mountRootfsVolumes(rootfs string) error {
+	mounts, ok := parseMountEnv(os.Environ())
+	if !ok {
+		return nil
+	}
+	for _, m := range mounts {
+		if err := safeContainerTarget(m.Target); err != nil {
+			return err
+		}
+		dst := filepath.Join(rootfs, filepath.Clean(m.Target)[1:])
+		if err := os.MkdirAll(dst, 0o755); err != nil {
+			return fmt.Errorf("创建挂载点 %s: %w", m.Target, err)
+		}
+		flags := uintptr(msBind)
+		if m.ReadOnly {
+			flags |= syscall.MS_RDONLY
+		}
+		if err := syscall.Mount(m.Source, dst, "", flags, ""); err != nil {
+			return fmt.Errorf("挂载卷 %s → %s: %w", m.Source, m.Target, err)
+		}
+	}
+	return nil
+}
+
+// safeContainerTarget 校验容器内挂载目标是绝对路径且不含目录穿越。
+func safeContainerTarget(target string) error {
+	if !filepath.IsAbs(target) {
+		return fmt.Errorf("卷目标 %q 不是绝对路径: %w", target, ErrBadConfig)
+	}
+	clean := filepath.Clean(target)
+	if clean != target || strings.Contains(target, "..") {
+		return fmt.Errorf("卷目标 %q 非法（含 .. 或非规范路径）: %w", target, ErrBadConfig)
 	}
 	return nil
 }
