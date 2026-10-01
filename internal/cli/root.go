@@ -49,6 +49,8 @@ func NewRootCommand(out, errOut io.Writer) *cobra.Command {
 		newImagesCommand(out),
 		newNetworkCommand(out),
 		newVolumeCommand(out),
+		newStatsCommand(out),
+		newResourceCommand(out),
 		newBootTestCommand(out),
 		newShutdownCommand(out),
 		newInitCommand(out),
