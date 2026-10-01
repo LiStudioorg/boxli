@@ -84,7 +84,7 @@ type StartOptions struct {
 	// Stdin/Stdout/Stderr 透传给容器 init；nil 时取 os.Stdin/os.Stdout。
 	Stdin, Stdout, Stderr *os.File
 	// StopCh 非 nil 时：等待期间该通道可读，立即向 init 转发 SIGTERM，
-	// GraceConfig 后仍未退出则 SIGKILL（停止语义由调用方提供信号源）。
+	// Grace 后仍未退出则 SIGKILL（停止语义由调用方提供信号源）。
 	StopCh <-chan struct{}
 	// Grace 是 SIGTERM 到 SIGKILL 的宽限，默认 10s。
 	Grace time.Duration

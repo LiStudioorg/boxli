@@ -201,3 +201,228 @@ CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -o boxli-darwin-arm64 .
 **阶段 1 已完成**：`.boxli` 镜像格式定义（docs/image-spec.md）、cobra CLI 骨架、`internal/image` 清单解析器、`internal/store` 落地存储、`boxli pull` 本地 `.boxli` 文件支持（`boxli run` / `ps` / `exec` / `boot` / `shutdown` 为骨架占位，明确返回未实现）。
 
 **阶段 2 进行中**：Linux 原生运行时 spike 已完成——`internal/runtime`（native_linux）实现纯 Go 的 namespace + pivot_root 容器（rootless 自动 user namespace），`boxli init`（隐藏命令）为容器 1 号进程入口，`boxli dev-run`（隐藏命令）为开发/基准入口；实测每容器 ≈ 2.3 MiB，报告见 [docs/runtime-benchmark.md](docs/runtime-benchmark.md)。`internal/storage` 层解包器已完成——`UnpackFile` 内容寻址解包（layers/sha256/<hex>/fs），`MergeLayers` 按序合并（whiteout/opaque 删除语义、符号链接逃逸防护、设备节点与 setuid 剥离、并发安全）；测试覆盖路径逃逸、重复条目、损坏 gzip、opaque 符号链接防护等场景。`boxli images` 已完成——`store.ListImages` 扫描 state.json（损坏条目跳过并告警），输出 REPOSITORY/TAG/ARCH/LAYERS/SIZE/CREATED 按导入时间倒序，支持 `-q` 与 `--format` Go 模板，空 store 友好提示且退出码 0。boot/shim 体系已完成——`<root>/containers/<id>/` 状态目录（config.json + runtime.json + stopped-by-user 标记）为 run/boot/shim 共用地基；`internal/shim` 为每容器生命周期持有者（Reexec 重执行 + setsid 脱终端 + container.log，restart 策略循环与退避重启）；`internal/boot.StartAll` 实现 `boxli boot` 一次性扫描拉起（策略矩阵 + 停止标记 + 幂等防重）；`internal/service` 管理 systemd unit（enable/disable/status，无 systemd 或无权限时明确提示并给出 sudo 手动命令）；`boxli shutdown` 经 SIGTERM shim 优雅停机；首次使用引导接入真实 boot enable。剩余：`boxli run` / `boxli stop` / `boxli ps` / `boxli rm` 整合已完成（阶段 2 收官）。`internal/engine` 为一次 run 的编排层（镜像查找 → 每层解包 → rootfs 合并 → 容器状态落盘 → 前台持有或后台 fork shim），CLI 只做参数绑定；`boxli run` 默认前台 stdio 直连、Ctrl+C 经 StopCh 转发容器、退出码透传 shell，`-d` 后台 fork shim 并打印容器 ID；`--name` 缺省自动生成 `adjective_animal` 式名字并去重；`-p`/`-v`/`--memory`/`--cpus`/`--pids-limit` 已解析并记入容器配置、运行时忽略并 `slog.Warn`（阶段 3 落地）。`boxli stop` 先写 `stopped-by-user` 标记再 SIGTERM shim，超时强杀并补写终态，已停止容器幂等；默认宽限为 `shim.GraceHold+5s`，小于该值会与 shim 写终态竞态导致退出码丢失。`boxli ps` 默认仅列运行中容器，`-a` 含已停止，`-q` 只出 ID，状态列区分 Up/Exited/Created 并标注 `user-stopped`。`boxli rm` 删除已停止容器整目录（含该容器独占的 rootfs，共享层缓存保留），运行中拒绝并提示先 stop，`-f` 先停再删。另修复 `boot.PidAlive` 真实缺陷：僵尸进程对 `signal 0` 仍探活成功，僵死 shim 会被 boot 误判为“已在运行”而永不重启，现读 `/proc/<pid>/stat` 判僵尸态。剩余（阶段 3）：`boxli exec`、资源限制（memory/cpus/pids）实际生效、`-p` 端口映射与 `-v` 卷挂载、`internal/network` 与 `internal/resource`。
+
+## 冻结接口（阶段 2 收官）
+
+以下接口自 `boxli run` 端到端跑通（阶段 2 收官）起**冻结**：签名、语义与哨兵错误均视为稳定契约。
+多模块并行开发期间，**修改任一冻结接口必须先提 issue 讨论**，说明动机、兼容性影响与迁移方案，
+达成一致后再动代码；禁止在业务分支里顺手改签名。只读使用不受限制。
+
+新增接口（不改动既有签名）不需要 issue，但仍应在本节登记，保持本节为接口的单一索引。
+
+### 一、Runtime（`internal/runtime`）
+
+```go
+// 启动
+func Start(cfg *Config, onChildStart func(pid int)) (*StartResult, error)
+func StartWith(cfg *Config, onChildStart func(pid int), opts *StartOptions) (*StartResult, error)
+
+// 容器 1 号进程入口与分流
+func RunInit() error
+func IsInitProcess() bool
+
+// 类型
+type Config struct {
+    Rootfs   string   // 容器新根（宿主机路径，必须已存在）
+    Hostname string   // 容器 UTS 名
+    Cmd      []string // 1 号进程 argv，必填
+    Env      []string // KEY=VALUE
+    Rootless bool     // 强制 user namespace；false 时按 euid 自动判定
+}
+func (c *Config) Validate() error
+
+type StartOptions struct {
+    Stdin, Stdout, Stderr *os.File     // nil → os.Stdin/os.Stdout
+    StopCh                <-chan struct{} // 可读即向 init 转发 SIGTERM
+    Grace                 time.Duration    // SIGTERM→SIGKILL 宽限，默认 10s
+}
+type StartResult struct {
+    ChildPID int // 容器 init 在宿主上的 PID
+    ExitCode int // 信号死亡时 = 128+signum
+}
+
+// 哨兵
+ErrNotInit, ErrBadConfig, ErrNotRoot, ErrUnsupported
+```
+
+- **没有 `Stop` 函数**：停止容器由 `StartOptions.StopCh` 驱动（收到可读即 SIGTERM，`Grace` 后 SIGKILL）；
+  面向用户的停止编排在 `internal/engine.Stop`（写 `stopped-by-user` 标记后 SIGTERM shim）。
+- 平台后端以 build tag 分文件实现同一组签名（`*_linux.go` / `*_android.go` / `*_darwin.go`）；
+  非 Linux 后端必须提供同名 stub 以保证全仓库可交叉编译。
+- `Start` 与 `StartWith` 的分工：`Start` 是 `StartWith(cfg, onChildStart, nil)` 的简写，两者都必须保留。
+
+### 二、Store（`internal/store`）
+
+```go
+// 数据目录
+func Open(root string) (*Store, error) // root 为空 → $BOXLI_HOME → ~/.boxli
+
+// 容器状态目录（config.json + runtime.json + stopped-by-user + rootfs）
+func NewContainerID() (string, error)
+func (s *Store) CreateContainer(cfg *ContainerConfig) error
+func (s *Store) LoadContainer(id string) (*ContainerConfig, error)
+func (s *Store) FindContainer(idOrName string) (*ContainerConfig, error) // ID 前缀或名字；歧义报错
+func (s *Store) ListContainers() ([]*ContainerConfig, error)            // 创建时间倒序
+func (s *Store) ContainerNames() (map[string]bool, error)
+func (s *Store) ContainerDir(id string) string
+func (s *Store) ContainersRoot() string
+func (s *Store) WriteRuntimeState(id string, st *RuntimeState) error
+func (s *Store) ReadRuntimeState(id string) (*RuntimeState, bool, error)
+func (s *Store) MarkStoppedByUser(id string) error
+func (s *Store) ClearStoppedByUser(id string) error
+func (s *Store) IsStoppedByUser(id string) bool
+func (s *Store) BootEligible(cfg *ContainerConfig) bool
+
+// 镜像落地
+func (s *Store) Put(srcPath string, force bool) (*image.Loaded, error)
+func (s *Store) Exists(name, version string) (bool, error)
+func (s *Store) ReadState(name, version string) (*State, error)
+func (s *Store) ListImages() ([]ImageInfo, error)
+func (s *Store) ImageDir(name, version string) string
+func (s *Store) ImagesRoot() string
+
+// boot 标记
+func (s *Store) BootMarker() string
+func (s *Store) EnsureBootDir() error
+
+type Restart string // RestartNo | RestartAlways | RestartUnlessStoped | RestartOnFailure
+func (r Restart) Valid() bool
+func (r Restart) BootEligible() bool
+
+// 哨兵
+ErrExists, ErrContainerExists, ErrContainerNotFound, ErrBadContainerConfig
+```
+
+- `ContainerConfig` 的 JSON 字段为 `run`/`boot`/`shim`/`ps` 共用契约；**新增字段必须 omitempty**，
+  且旧版本读新配置不得失败（向后兼容是硬要求）。
+- 文件写入一律"临时文件 + rename"原子替换；容器目录内的临时文件必须与目标同目录（跨设备 rename 报 EXDEV）。
+- `RuntimeState` 的写方只有 shim（前台模式下是持有容器的 CLI 进程）；其他模块只读。
+
+### 三、Image（`internal/image`）
+
+```go
+// 清单解析（严格解析，未知字段一律拒绝，禁"尽力猜测"）
+func ParseManifest(data []byte) (*Manifest, error) // index.json
+func ParseConfig(data []byte) (*Config, error)     // config blob
+func (m *Manifest) Validate() error
+func (m *Manifest) Ref() string // name:version
+
+// 归档打开与校验
+func OpenFile(path string) (*Loaded, error)
+func (l *Loaded) VerifyLayers() error
+func (l *Loaded) CheckPlatform() error
+func (l *Loaded) Entry(name string) (EntryInfo, bool)
+func (l *Loaded) ExtractFile(name, dst string) error
+
+// 路径安全（规范第 4 节）
+func SafeArchivePath(name string) error
+
+// 常量
+IndexName, BlobsDir, MediaTypeManifest
+
+// 哨兵
+ErrBadManifest, ErrUnsafePath, ErrLayerMissing, ErrConfigMissing,
+ErrSizeMismatch, ErrDigestMismatch, ErrBadApplyOrder, ErrArchMismatch,
+ErrUnsafeLayer, ErrIndexTooLarge
+```
+
+- **没有 `ParseIndex`**：`index.json` 的解析入口是 `ParseManifest`（早期草案名，已废弃）。
+- 任何格式改动必须**先改 `docs/image-spec.md`、再改代码**，且只允许通过 `specVersion` 做不兼容升级。
+- `OpenFile` 只做清单类/结构类/config blob 校验；层全量摘要由 `VerifyLayers` 重算（流式，内存 O(1)）。
+  `boxli run` 走的是"信任 pull 期已校验"，不重复 `VerifyLayers`。
+
+### 四、Storage（`internal/storage`）
+
+```go
+// 内容寻址层存储：<storeRoot>/layers/sha256/<hex>/fs
+func UnpackFile(layerPath, wantDigest, storeRoot string) (*UnpackResult, error)
+func MergeLayers(storeRoot string, orderedDigests []string, targetDir string) error
+func LayerUnpacked(storeRoot, hexDigest string) bool
+func LayerFSDir(storeRoot, hexDigest string) string
+func LayersRoot(storeRoot string) string
+
+type UnpackResult struct {
+    DigestHex string
+    FSDir     string
+}
+
+// 哨兵
+ErrCorruptLayer, ErrDuplicateEntry, ErrBadDigest, ErrLayerMissingLocal
+```
+
+- 摘要参数形态固定：`UnpackFile`/`MergeLayers` 接受 64 位十六进制（`sha256:` 前缀可带可不带），
+  `LayerUnpacked`/`LayerFSDir` 只接受裸十六进制。
+- `UnpackFile` 是**差异视图**：whiteout 文件原样保留，删除语义由 `MergeLayers` 应用；两者职责不可混淆。
+- `MergeLayers` 的 `targetDir` 可以不存在（内部 MkdirAll）；合并是"叠加拷贝"，同一容器重复合并不幂等，
+  调用方须保证目标是全新目录。
+- 层缓存**跨容器共享、永不随容器删除而回收**（引用计数是阶段 3 项）；`boxli rm` 只删容器目录。
+
+### 五、Shim（`internal/shim`）
+
+```go
+// 生命周期
+func Reexec(storeRoot, id string) (*os.Process, error) // setsid 脱终端，日志追加 container.log
+func Run(ctx context.Context, o *Options) error        // 主循环：启动 → 写状态 → 按策略重启或退出
+func RunFromEnv(ctx context.Context) error             // main 分流入口
+func IsShimProcess() bool
+func LogPath(storeRoot, id string) string
+
+type Options struct {
+    Store        *store.Store
+    Cfg          *store.ContainerConfig
+    Stdin, Stdout, Stderr *os.File // 前台模式由持有容器的进程提供
+    OnStart      func(pid int)     // init 起来后的回调，用于尽早落状态
+}
+
+// 常量
+EnvMarker    = "BOXLI_SHIM"
+EnvStoreRoot = "BOXLI_STORE_ROOT"
+EnvContainer = "BOXLI_CONTAINER"
+GraceHold    = 10 * time.Second // 导出：stop 的宽限必须大于它
+
+// 哨兵
+ErrShimNotRequested
+```
+
+- `GraceHold` 是**跨模块契约**：`engine.Stop` 的默认超时派生为 `GraceHold+5s`。任何调小它的改动
+  都会重新引入"stop 抢在 shim 写终态前强杀导致退出码丢失"的竞态，必须同步评估调用方。
+- shim 是 `runtime.json` 的唯一写方（含前台模式下由 CLI 进程充当 shim 的场景）。
+- 重启退避序列固定为 1s/2s/4s/8s/30s（封顶 30s）；改动需同步 `boxli boot` 的幂等判定窗口评估。
+
+## 并行开发约定
+
+阶段 3 起多模块并行推进，约定如下。
+
+### 分支与模块边界
+
+每个模块一个独立分支，只允许改自己模块的目录与其 `_test.go`：
+
+| 分支 | 允许修改 | 职责边界 |
+| --- | --- | --- |
+| `feat/network` | `internal/network/`（+ `*_test.go`） | bridge、veth、端口映射、DNS |
+| `feat/volume` | `internal/storage/volume/`（+ `*_test.go`） | 卷、驱动、配额 |
+| `feat/resource` | `internal/resource/`（+ `*_test.go`） | cgroup、GPU、IO |
+| `feat/cli` | `internal/cli/`、`internal/engine/`（+ `*_test.go`） | 新命令、参数、输出 |
+| `feat/hub` | `hub/`（+ `*_test.go`） | 仓库服务端 |
+
+### 硬性禁止
+
+1. **禁止修改 AGENTS.md、go.mod、main.go**，除非该模块明确需要且已在 issue 中说明理由。
+   `go.mod` 新增第三方依赖一律需要单独批准（见"依赖白名单"）。
+2. **禁止修改其他模块的接口签名**（上节"冻结接口"列出的全部符号）。需要新能力时，
+   在**自己的模块内**定义窄接口并依赖它，不要反向改动对方包。
+3. **禁止跨模块目录写入**：一个 PR 只碰自己那一列的路径。跨模块改动必须拆成多个 PR，
+   由对应模块分支分别提交。
+4. 新增顶层目录前先在"目录结构"一节登记（`internal/network` 与 `internal/resource` 已登记，
+   `internal/storage/volume`、`hub/` 需在各自首个 PR 中补登记）。
+
+### 跨模块协作方式
+
+- 需要用别人的能力时，**依赖已冻结的具体函数**（当前内部包之间就是这样直连的），
+  或者在自己模块里声明小接口由调用方注入。冻结接口已经足够支撑阶段 3，预期不需要新的跨模块缝。
+- 共享的磁盘布局（`<root>/containers/<id>/`、`<root>/layers/sha256/<hex>/`、`<root>/images/`）
+  是事实契约：新模块只允许**新增**子路径，不得改变既有文件名与语义。
+- 每个模块的 PR 必须自带：`gofmt -l .` 为空、`go vet ./...` 通过、`go test ./...` 全绿、
+  三平台交叉编译通过（linux/android/darwin amd64+arm64）。
+- 发现冻结接口有缺陷时：**先提 issue，再改 AGENTS.md，最后改代码**；不要在自己的分支里
+  悄悄放宽或绕过它。
