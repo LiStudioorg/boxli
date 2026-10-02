@@ -94,14 +94,22 @@ func ConfigurePeer(netName, containerID, ip, gateway string, prefix int, hostnam
 	return nil
 }
 
-// writeDNSFiles 写容器内 /etc/resolv.conf（nameserver=网关）与 /etc/hosts
-// （本机名 → 自身 IP + 网关）。运行时机在 pivot_root 之后、exec 用户命令之前，
-// 故路径即容器 rootfs。内置 /proc 掩码已就绪，写入容器只读卷由上层保证。
+// writeDNSFiles 在容器根（/）写 /etc/resolv.conf 与 /etc/hosts。
 func writeDNSFiles(ip, gateway, hostname string) error {
+	return writeDNSFilesTo("/", ip, gateway, hostname)
+}
+
+// writeDNSFilesTo 在给定 root 下写 etc/resolv.conf 与 etc/hosts（root=容器新根）。
+// root 拆出便于单测在临时目录验证、避免碰宿主 /etc。
+func writeDNSFilesTo(root, ip, gateway, hostname string) error {
+	etc := filepath.Join(root, "etc")
+	if err := os.MkdirAll(etc, 0o755); err != nil {
+		return fmt.Errorf("创建容器 %s: %w", etc, err)
+	}
 	// resolv.conf：指向桥接网关（Boxli 内置 DNS 的统一入口）。
 	resolv := fmt.Sprintf("nameserver %s\n", gateway)
-	if err := os.WriteFile("/etc/resolv.conf", []byte(resolv), 0o644); err != nil {
-		return fmt.Errorf("写 /etc/resolv.conf: %w", err)
+	if err := os.WriteFile(filepath.Join(etc, "resolv.conf"), []byte(resolv), 0o644); err != nil {
+		return fmt.Errorf("写 resolv.conf: %w", err)
 	}
 	// hosts：追加本机名与网关映射（保留既有 loopback 行，不覆盖）。
 	var b strings.Builder
@@ -110,9 +118,8 @@ func writeDNSFiles(ip, gateway, hostname string) error {
 		fmt.Fprintf(&b, "%s %s\n", ip, hostname)
 	}
 	fmt.Fprintf(&b, "%s boxli-gw\n", gateway)
-	p := filepath.Join("/etc", "hosts")
-	if err := os.WriteFile(p, []byte(b.String()), 0o644); err != nil {
-		return fmt.Errorf("写 /etc/hosts: %w", err)
+	if err := os.WriteFile(filepath.Join(etc, "hosts"), []byte(b.String()), 0o644); err != nil {
+		return fmt.Errorf("写 hosts: %w", err)
 	}
 	return nil
 }

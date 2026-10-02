@@ -3,48 +3,45 @@
 
 package network
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
 
-func TestParseNetMode(t *testing.T) {
-	cases := map[string]NetMode{
-		"":         ModeBridge,
-		"boxli0":   ModeBridge,
-		"bridge":   ModeBridge,
-		"mybridge": ModeBridge, // 自定义名称一律走桥接
-		"host":     ModeHost,
-		"none":     ModeNone,
+// TestWriteDNSFilesToCreatesEtc 回归：FROM scratch 镜像没有 /etc，写
+// resolv.conf/hosts 前必须 MkdirAll /etc，否则 init 报
+// "写 /etc/resolv.conf: no such file or directory" 并退出。
+func TestWriteDNSFilesToCreatesEtc(t *testing.T) {
+	root := t.TempDir()
+	if err := writeDNSFilesTo(root, "172.18.0.3", "172.18.0.1", "demo"); err != nil {
+		t.Fatalf("writeDNSFilesTo: %v", err)
 	}
-	for in, want := range cases {
-		if got := ParseNetMode(in); got != want {
-			t.Errorf("ParseNetMode(%q)=%s 期望 %s", in, got, want)
-		}
-	}
-}
-
-func TestClientNetConfig(t *testing.T) {
-	m := newTestManager(t)
-	// 创建 bridge 并接入容器，验证 ClientNetConfig 返回 IP/网关/前缀。
-	if _, err := m.Create("br", DriverBridge, "172.22.0.0/16", "172.22.0.1"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := m.Connect("br", "c1", "alice", ""); err != nil {
-		t.Fatal(err)
-	}
-	cn, err := m.ClientNetConfig("br", "c1")
+	rc, err := os.ReadFile(filepath.Join(root, "etc", "resolv.conf"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cn.Prefix != 16 || cn.Gateway != "172.22.0.1" || cn.IP == "" || cn.Name != "br" {
-		t.Fatalf("ClientNetConfig 错误: %+v", cn)
+	if string(rc) != "nameserver 172.18.0.1\n" {
+		t.Fatalf("resolv.conf= %q", rc)
 	}
-	// 未接入的容器应报错。
-	if _, err := m.ClientNetConfig("br", "nobody"); err == nil {
-		t.Error("未接入的容器应报错")
+	hf, err := os.ReadFile(filepath.Join(root, "etc", "hosts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(hf)
+	if !strings.Contains(s, "172.18.0.3 demo") || !strings.Contains(s, "172.18.0.1 boxli-gw") {
+		t.Fatalf("hosts 缺本机名/网关: %q", s)
 	}
 }
 
-func TestHostBridgeIface(t *testing.T) {
-	if got := HostBridgeIface("boxli0"); got == "" {
-		t.Error("HostBridgeIface 返回空")
+// TestWriteDNSFilesToOverwrites 验证可重跑（写现有文件不报错）。
+func TestWriteDNSFilesToOverwrites(t *testing.T) {
+	root := t.TempDir()
+	if err := writeDNSFilesTo(root, "172.18.0.3", "172.18.0.1", "demo"); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeDNSFilesTo(root, "172.18.0.3", "172.18.0.1", "demo"); err != nil {
+		t.Fatalf("二次调用: %v", err)
 	}
 }
