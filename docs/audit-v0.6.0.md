@@ -64,18 +64,31 @@
 | 高 | internal/runtime/init | `:ro` 卷单次 bind 只读被内核忽略 | bind 后再 remount MS_REMOUNT\|BIND\|RDONLY | `d241797` |
 | 中 | internal/store,engine | 并发同名 run 名字唯一性 TOCTOU + rm 泄漏名字锁 | O_EXCL 名字锁；rm 走 RemoveContainer 释放 | `649510d` |
 | 低 | internal/runtime | exec 改造后旧 setns 死代码残留 | 清理 | `6e81c59` |
+| 中 | internal/build | `maxBuildLayerBytes = 1<<32` 为无类型常量，32 位平台 `int` 溢出 → `GOOS=linux GOARCH=386` 编译失败 | 显式声明 `int64` | `8d302b4` |
+| 低 | internal/dev（测试） | 去抖测试写入串可能跨越「轮询→去抖到期→再轮询」边界，合法产生第二批 → 偶发误报 | 写入前对齐轮询边界 + 缩短写入间隔 | `de44547` |
 
 ## 5. 遗留
 
 - 端口映射 host→容器：受宿主 netfilter 限制（rootless-docker FORWARD DROP + ufw），需标准 root 主机验证；verify-root.sh 已做 Docker 对照与降级。
 - 覆盖率未达 70 的包为特权路径，需 root 单测/真机覆盖。
-- `execns`（cgo）arm64 交叉编译需 arm64 C 工具链（CI 负责），nocgo_exec 各平台可编。
+- `execns`（cgo）arm64 交叉编译需 arm64 C 工具链（CI 负责）；`-tags nocgo_exec`
+  下 linux/amd64、linux/arm64、linux/386、linux/arm、linux/riscv64、darwin（amd64/arm64）、
+  android/arm64 均可编。`android/amd64`、`android/arm` 受 Go 工具链限制必须启用 cgo 外部链接，非本仓库缺陷。
 - capabilities 剥离：boxli 非 OCI，不实现 cap drop（文档声明）。
 
 ## 6. 验证
 
-- `go test ./... -count=1`：16 包全绿。
+- `go test ./... -count=1`：16 包全绿（连跑 3 次无失败）。
 - `go vet -all ./...`、`gofmt -l .`：干净。
-- `-race -count=5` 关键包：无 data race。
-- 交叉编译：cgo linux/amd64 + nocgo_exec（linux/arm64、android、darwin）通过。
+- `-race -count=5` 关键包：无 data race。`internal/dev` 去抖用例连跑 40 次、
+  并在 8 路 CPU 争用下连跑 15 次全绿（修复前曾在整包 `./...` 运行中偶发失败）。
+- 交叉编译：cgo linux/amd64 + nocgo_exec（linux/amd64、linux/arm64、linux/386、
+  linux/arm、linux/riscv64、darwin/amd64、darwin/arm64、android/arm64）全部通过。
+  `android/amd64` 需 cgo 外部链接（Go 工具链限制，非本仓库缺陷），
+  `cgo linux/arm64` 需 arm64 C 工具链。
+- 真机复验（root，独立 `BOXLI_HOME`）：`memory.max=67108864`、`cpu.max=50000 100000`、
+  `pids.max=32` 实际写入生效；`exec` 报告容器 hostname（证明 setns 成功）；
+  并发 3 次同名 `run` 恰好 1 个成功、2 个被拒且名字锁在 `rm` 后释放；
+  `:ro` 卷写入被 DENIED。复验后宿主无 boxli 残留（无 nft 表 / 无 veth / 无网桥），
+  Docker 的 3 个容器与 `ip_forward` 未受影响。
 - 真机 A–J：见 test-report-v0.6.0.md。
