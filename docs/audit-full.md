@@ -115,3 +115,18 @@ unavailable` 仍复现。
 flags/change 命中 ifinfomsg。
 
 commit `779cbf5`
+
+### fix(netlink): SetLinkMaster enslaved the bridge to itself (EBUSY)
+
+**现象**：修掉 setIFFBuf 后 veth 走到 SetLinkMaster 仍失败，新错误
+`挂接网桥侧 veth 到 boxli0: rtnetlink add-link: device or resource busy`。
+
+**根因**：`SetLinkMaster(name, master)` 把 `LinkByName(master)`（网桥 boxli0）
+的 ifindex 放进了 RTM_NEWLINK 的 `ifinfomsg.ifindex`，即把请求主体误设成了
+**网桥**，再叠加 `IFLA_MASTER=网桥` —— 变成"把网桥挂到网桥自己" → EBUSY。
+RTM_NEWLINK 主体必须是被挂接的链路（hostVeth），`IFLA_MASTER` 才指向网桥。
+
+**修复**：`buildSetLinkMasterReq` 用 slave 的 ifindex/IFLA_IFNAME 作主体、master
+作 IFLA_MASTER。回归测试断言 ifinfomsg.ifindex=slave、IFLA_MASTER=master。
+
+commit `4b3a833`
