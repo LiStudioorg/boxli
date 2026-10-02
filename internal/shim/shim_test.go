@@ -4,6 +4,9 @@
 package shim
 
 import (
+	"context"
+	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -74,5 +77,21 @@ func TestRunFromEnvGuards(t *testing.T) {
 	t.Setenv(EnvContainer, "")
 	if err := RunFromEnv(t.Context()); err == nil {
 		t.Fatal("缺失环境变量应报错")
+	}
+}
+
+// TestRunFromEnvEnforcement 覆盖 RunFromEnv 的早退分支（无需真实 fork）。
+func TestRunFromEnvEnforcement(t *testing.T) {
+	// 非 shim 进程（未设 BOXLI_SHIM）→ ErrShimNotRequested。
+	os.Unsetenv(EnvMarker)
+	if err := RunFromEnv(context.Background()); !errors.Is(err, ErrShimNotRequested) {
+		t.Fatalf("非 shim 期望 ErrShimNotRequested，实得 %v", err)
+	}
+	// 设了 marker 但缺 store root / container id。
+	os.Setenv(EnvMarker, markerValue)
+	t.Cleanup(func() { os.Unsetenv(EnvMarker) })
+	os.Unsetenv(EnvStoreRoot)
+	if err := RunFromEnv(context.Background()); err == nil {
+		t.Fatal("缺 EnvStoreRoot 应报错")
 	}
 }
