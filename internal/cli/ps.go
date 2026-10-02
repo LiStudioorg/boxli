@@ -88,14 +88,15 @@ func collectContainerRows(st *store.Store, all bool) ([]containerRow, error) {
 			return nil, err
 		}
 		running := ok && state.Running && boot.PidAlive(state.ShimPID)
-		if !running && !all {
+		starting := ok && state.Status == store.StatusStarting
+		if !running && !starting && !all {
 			continue
 		}
 		rows = append(rows, containerRow{
 			ID:      cfg.ID,
 			Name:    cfg.Name,
 			Image:   cfg.ImageRef,
-			Status:  psStatus(st, cfg.ID, state, ok, running),
+			Status:  psStatus(st, cfg.ID, state, ok, running, starting),
 			Created: formatCreated(cfg.CreatedAt),
 			Restart: string(cfg.Restart),
 		})
@@ -103,8 +104,12 @@ func collectContainerRows(st *store.Store, all bool) ([]containerRow, error) {
 	return rows, nil
 }
 
-// psStatus 渲染容器状态列：Up（运行中）/ Exited / Created。
-func psStatus(st *store.Store, id string, state *store.RuntimeState, hasState, running bool) string {
+// psStatus 渲染容器状态列：Up（运行中）/ Starting（装配中）/ Exited / Created。
+func psStatus(st *store.Store, id string, state *store.RuntimeState, hasState, running, starting bool) string {
+	if starting {
+		// 已 fork shim 但装配/init 尚未确认存活。
+		return "Starting"
+	}
 	if running {
 		up := "Up"
 		if state.StartedAt != "" {

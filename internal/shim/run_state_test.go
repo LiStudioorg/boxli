@@ -43,6 +43,9 @@ func TestRunMarksStoppedWhenInitExits(t *testing.T) {
 	if state.Running {
 		t.Fatal("init 退出后 Running 仍为 true（假 Up）")
 	}
+	if state.Status != store.StatusExited {
+		t.Fatalf("init 退出后 Status 应为 exited，实得 %q", state.Status)
+	}
 	if state.ExitCode != 7 {
 		t.Fatalf("退出码未回写: %d", state.ExitCode)
 	}

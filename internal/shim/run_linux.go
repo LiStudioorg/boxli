@@ -68,9 +68,10 @@ func Run(ctx context.Context, o *Options) error {
 		in = os.Stdin
 	}
 
-	state := store.RuntimeState{ExitCode: -1, ShimPID: os.Getpid()}
+	state := store.RuntimeState{ExitCode: -1, ShimPID: os.Getpid(), Status: store.StatusStarting}
 	for {
-		state.Running = true
+		state.Running = false
+		state.Status = store.StatusStarting
 		state.StartedAt = nowRFC3339()
 		state.FinishedAt = ""
 		if err := st.WriteRuntimeState(cfg.ID, &state); err != nil {
@@ -88,9 +89,10 @@ func Run(ctx context.Context, o *Options) error {
 			Env:      env,
 		}, func(pid int) {
 			state.InitPID = pid
-			// 容器已 fork 但尚未退出：立即持久化，running 期间 status/stop 可见 initPid。
+			// 容器已 fork 且 init 存活：置为 running，持续时间被 ps/stop 可见。
 			running := state
 			running.Running = true
+			running.Status = store.StatusRunning
 			_ = st.WriteRuntimeState(cfg.ID, &running)
 			if o.OnStart != nil {
 				o.OnStart(pid)
@@ -103,6 +105,7 @@ func Run(ctx context.Context, o *Options) error {
 			Grace:  GraceHold,
 		})
 		state.Running = false
+		state.Status = store.StatusExited
 		if err != nil {
 			state.FinishedAt = nowRFC3339()
 			_ = st.WriteRuntimeState(cfg.ID, &state)

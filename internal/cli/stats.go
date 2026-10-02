@@ -57,11 +57,11 @@ func newStatsCommand(out io.Writer) *cobra.Command {
 				s, err := resource.StatsFor(c.ID)
 				if err != nil {
 					slog.Debug("stats 采集失败", "container", c.ID, "err", err)
-					status := psStatus(st, c.ID, rtState, hasState, false)
+					status := psStatus(st, c.ID, rtState, hasState, false, false)
 					fmt.Fprintf(tw, "%s\tn/a\tn/a\tn/a\tn/a\tn/a\t%s\n", c.Name, status)
 					continue
 				}
-				status := psStatus(st, c.ID, rtState, hasState, s.Running)
+				status := psStatus(st, c.ID, rtState, hasState, s.Running, false)
 				if s.Running || all {
 					fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d\t%s\t%s\n",
 						c.Name,

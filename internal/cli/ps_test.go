@@ -143,3 +143,31 @@ func TestHumanDuration(t *testing.T) {
 		}
 	}
 }
+
+// TestPsStatusStarting 验证 Starting 状态（装配中）被明确渲染，不显示 Up/Exited。
+func TestPsStatusStarting(t *testing.T) {
+	st, runID, _ := newPsTestStore(t)
+	// 模拟 run -d 早期：已 fork shim（本进程）但装配未完成。
+	if err := st.WriteRuntimeState(runID, &store.RuntimeState{
+		ShimPID: os.Getpid(), Running: false, Status: store.StatusStarting, ExitCode: -1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if s := psStatus(st, runID, &store.RuntimeState{Status: store.StatusStarting}, true, false, true); s != "Starting" {
+		t.Fatalf("starting 应渲染为 Starting，实得 %q", s)
+	}
+	// Starting 的容器即使默认（非 -a）也应列出。
+	rows, err := collectContainerRows(st, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, r := range rows {
+		if r.ID == runID && r.Status == "Starting" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("starting 容器未在默认 ps 中显示为 Starting")
+	}
+}

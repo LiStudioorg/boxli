@@ -226,8 +226,9 @@ func prepareAndStart(ctx context.Context, st *store.Store, cfg *store.ContainerC
 		return err
 	}
 	// 尽早记录 shim PID，boot 幂等判定窗口最小化；完整状态由 shim 覆写。
+	// 此阶段装配尚未完成，标记为 starting（Running=false），ps 不显示 Up。
 	_ = st.WriteRuntimeState(cfg.ID, &store.RuntimeState{
-		ShimPID: p.Pid, Running: true, ExitCode: -1,
+		ShimPID: p.Pid, Running: false, Status: store.StatusStarting, ExitCode: -1,
 		StartedAt: time.Now().UTC().Format(time.RFC3339),
 	})
 	return nil

@@ -100,6 +100,9 @@ type RuntimeState struct {
 	InitPID int `json:"initPid,omitempty"`
 	// Running 表示容器当前在跑（shim 维护）。
 	Running bool `json:"running"`
+	// Status 表示容器状态阶段：starting（装配中）→ running（init 已起）
+	// → exited。Running 与之保持一致；starting 时 Running 为 false。
+	Status string `json:"status,omitempty"`
 	// ExitCode 是最近一次退出码（未退出为 -1）。
 	ExitCode int `json:"exitCode"`
 	// StartedAt / FinishedAt 是最近一次运行起止时间（UTC RFC 3339）。
@@ -108,6 +111,13 @@ type RuntimeState struct {
 	// RestartCount 是 shim 按策略累计的重启次数。
 	RestartCount int `json:"restartCount"`
 }
+
+// 容器状态阶段（RuntimeState.Status）。
+const (
+	StatusStarting = "starting" // 已 fork shim、装配尚未完成，未确认 init 存活
+	StatusRunning  = "running"  // 容器 init 已启动
+	StatusExited   = "exited"   // 已停止
+)
 
 // ErrorsContainersDir 辅助哨兵。
 var (
