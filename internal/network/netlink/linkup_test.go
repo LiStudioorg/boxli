@@ -112,3 +112,22 @@ func TestBuildRouteMsgLayout(t *testing.T) {
 		t.Fatalf("dst_len(16) 时=%d", b2[1])
 	}
 }
+
+// TestBuildAddrMsgLayout 回归：struct ifaddrmsg 的 prefix 必须在 ifa_prefixlen
+// (byte1)，此前错写进 ifa_flags (byte2) → 地址以 /0 添加、默认路由报
+// network is unreachable。
+func TestBuildAddrMsgLayout(t *testing.T) {
+	b := buildAddrMsg(3, 16)
+	if b[0] != uint8(syscall.AF_INET) {
+		t.Fatalf("family=%d 期望 AF_INET", b[0])
+	}
+	if b[1] != 16 {
+		t.Fatalf("ifa_prefixlen(b1)=%d 期望 16", b[1])
+	}
+	if b[2] != 0 {
+		t.Fatalf("ifa_flags(b2) 应 0，实得 %d（prefix 曾误写到这里）", b[2])
+	}
+	if got := getU32(b[4:8]); got != 3 {
+		t.Fatalf("ifa_index=%d 期望 3", got)
+	}
+}

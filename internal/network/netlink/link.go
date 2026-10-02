@@ -216,11 +216,7 @@ func SetLinkNetnsPid(name string, pid int) error {
 // AddAddr 为接口绑定一个 IP。ip 如 "172.18.0.2"，prefix 如 16。
 func AddAddr(ifname, ip string, prefix int) error {
 	idx := mustIndex(ifname)
-	b := make([]byte, 8)
-	b[0] = syscall.AF_INET
-	b[2] = byte(prefix)
-	binary.LittleEndian.PutUint32(b[4:8], idx)
-	r := newReq(RTM_NEWADDR, NLM_F_CREATE|NLM_F_EXCL, b)
+	r := newReq(RTM_NEWADDR, NLM_F_CREATE|NLM_F_EXCL, buildAddrMsg(idx, prefix))
 	r.addAttr(IFA_LOCAL, netIP4(ip))
 	r.addAttr(IFA_ADDRESS, netIP4(ip))
 	_, err := r.do()
@@ -230,15 +226,23 @@ func AddAddr(ifname, ip string, prefix int) error {
 // DelAddr 移除接口上的 IP。
 func DelAddr(ifname, ip string, prefix int) error {
 	idx := mustIndex(ifname)
-	b := make([]byte, 8)
-	b[0] = syscall.AF_INET
-	b[2] = byte(prefix)
-	binary.LittleEndian.PutUint32(b[4:8], idx)
-	r := newReq(RTM_DELADDR, 0, b)
+	r := newReq(RTM_DELADDR, 0, buildAddrMsg(idx, prefix))
 	r.addAttr(IFA_LOCAL, netIP4(ip))
 	r.addAttr(IFA_ADDRESS, netIP4(ip))
 	_, err := r.do()
 	return err
+}
+
+// buildAddrMsg 构造 struct ifaddrmsg（8 字节）：family[0] prefixlen[1]
+// flags[2] scope[3] index[4:8]。此前把 prefix 写进 b[2](ifa_flags)，导致
+// 地址以 /0 添加、网关不在连本网段，设默认路由时报 network is unreachable。
+func buildAddrMsg(ifindex uint32, prefix int) []byte {
+	b := make([]byte, 8)
+	b[0] = syscall.AF_INET
+	b[1] = byte(prefix) // ifa_prefixlen
+	b[3] = byte(RT_SCOPE_UNIVERSE)
+	binary.LittleEndian.PutUint32(b[4:8], ifindex)
+	return b
 }
 
 // AddRoute 添加一条 IPv4 路由。dst 为空表示默认路由。
