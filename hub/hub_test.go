@@ -5,10 +5,12 @@ package hub
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -268,5 +270,82 @@ func TestLocalBlobListAndDelete(t *testing.T) {
 	}
 	if has, _ := ls.Has(d); has {
 		t.Fatal("删除后 Has 应为 false")
+	}
+}
+
+// TestServerHTTPE2E 用 httptest 覆盖 HTTP 层：鉴权 401、login→token、push/tag、
+// _catalog、search、blob 取回，以及默认根目录函数。
+func TestServerHTTPE2E(t *testing.T) {
+	reg := newTestRegistry(t)
+	srv, err := NewServer(reg, WithAuth("test-secret"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv.SetUser("admin", "pw")
+	h := srv.Handler()
+
+	do := func(method, path, tok string, body io.Reader) (int, string) {
+		req := httptest.NewRequest(method, path, body)
+		if tok != "" {
+			req.Header.Set("Authorization", "Bearer "+tok)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec.Code, rec.Body.String()
+	}
+
+	// 1. 未加 token 访问受保护端点 → 401。
+	if code, _ := do("GET", "/_catalog", "", nil); code != http.StatusUnauthorized {
+		t.Fatalf("无 token 期望 401，实得 %d", code)
+	}
+
+	// 2. login（JSON）→ token。
+	loginBody := bytes.NewBufferString(`{"username":"admin","password":"pw"}`)
+	code, body := do("POST", "/auth/login", "", loginBody)
+	if code != http.StatusOK {
+		t.Fatalf("login 期望 200，实得 %d", code)
+	}
+	var lr struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal([]byte(body), &lr); err != nil || lr.Token == "" {
+		t.Fatalf("login 未返回 token: %q", body)
+	}
+	tok := lr.Token
+
+	// 3. 加 token 后 _catalog 可用。
+	if code, _ := do("GET", "/_catalog", tok, nil); code != http.StatusOK {
+		t.Fatalf("带 token catalog 期望 200，实得 %d", code)
+	}
+
+	// 4. push 一个 blob + tag，验证 search/catalog 能看到，blob 可取回。
+	data := []byte("hello-e2e-blob")
+	d, _, _ := computeDigest(bytes.NewReader(data))
+	if _, err := reg.PutBlob("", bytes.NewReader(data), int64(len(data))); err != nil {
+		t.Fatal(err)
+	}
+	// 上传 manifest 建立 tag（走 handlTag PUT）。
+	if err := reg.Tag("myns/app", "v1", d); err != nil {
+		t.Fatalf("PutTag: %v", err)
+	}
+	if code, b := do("GET", "/tags/myns/app/v1", tok, nil); code != http.StatusOK {
+		t.Fatalf("GET tag 期望 200，实得 %d (%s)", code, b)
+	}
+	if code, b := do("GET", "/blobs/"+d, tok, nil); code != http.StatusOK || b != string(data) {
+		t.Fatalf("GET blob 期望内容匹配，实得 code=%d body=%q", code, b)
+	}
+	if code, b := do("GET", "/search?q=app", tok, nil); code != http.StatusOK {
+		t.Fatalf("search 期望 200，实得 %d (%s)", code, b)
+	}
+
+	// 5. 默认根目录辅助函数。
+	if _, e := defaultHubRoot(); e != nil {
+		t.Fatalf("defaultHubRoot: %v", e)
+	}
+	if _, e := defaultBlobRoot(); e != nil {
+		t.Fatalf("defaultBlobRoot: %v", e)
+	}
+	if _, e := defaultDataRoot(); e != nil {
+		t.Fatalf("defaultDataRoot: %v", e)
 	}
 }
