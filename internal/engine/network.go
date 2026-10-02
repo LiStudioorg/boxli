@@ -115,6 +115,12 @@ func wireNetworkBeforeStart(st *store.Store, cfg *store.ContainerConfig, netName
 	if err := m.EnsureDriver(netName); err != nil {
 		slog.Warn("网络网桥未就绪（可能无 root），veth 装配可能失败", "net", netName, "err", err)
 	}
+	// 清理历史残留端点（容器已不存在的端点仍会被 ApplyNAT 登记 DNAT，指到死
+	// IP 会挡掉真实容器的流量），避免 curl 空。
+	_ = m.PruneEndpoints(netName, func(cid string) bool {
+		_, err := st.LoadContainer(cid)
+		return err == nil
+	})
 	// 分配 IP 并登记为该网络端点。
 	ep, err := m.Connect(netName, cfg.ID, cfg.Name, wantIP)
 	if err != nil {

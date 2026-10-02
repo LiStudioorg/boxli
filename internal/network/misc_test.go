@@ -83,3 +83,29 @@ func TestConnectDuplicate(t *testing.T) {
 		t.Error("重复接入应报错")
 	}
 }
+
+// TestPruneEndpoints 验证移除已死容器的端点。
+func TestPruneEndpoints(t *testing.T) {
+	m := newTestManager(t)
+	if err := m.EnsurePreset(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Connect("boxli0", "c1", "alive", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Connect("boxli0", "c2", "dead", ""); err != nil {
+		t.Fatal(err)
+	}
+	// c2 已死（alive 谓词 false）。
+	if err := m.PruneEndpoints("boxli0", func(id string) bool { return id == "c1" }); err != nil {
+		t.Fatal(err)
+	}
+	n, _ := m.Load("boxli0")
+	ids := map[string]bool{}
+	for _, e := range n.Endpoints {
+		ids[e.ContainerID] = true
+	}
+	if len(n.Endpoints) != 1 || !ids["c1"] || ids["c2"] {
+		t.Fatalf("PruneEndpoints 后端点错误: %+v", n.Endpoints)
+	}
+}

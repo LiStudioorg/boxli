@@ -257,6 +257,37 @@ func (m *Manager) Disconnect(netName, containerID string) error {
 	return fmt.Errorf("容器 %s 未接入网络 %s: %w", containerID, netName, ErrEndpointNotFound)
 }
 
+// PruneEndpoints 移除网络里容器已不存在（alive 谓词返回 false）的端点，
+// 并清掉其 veth/NAT，避免历史残留端点继续被 DNAT、导致指向死 IP 的连接被
+// 丢弃（表现为 curl 空）。供 engine 在接入新容器前调用。
+func (m *Manager) PruneEndpoints(netName string, alive func(containerID string) bool) error {
+	if alive == nil {
+		return nil
+	}
+	n, err := m.Load(netName)
+	if err != nil {
+		return err
+	}
+	kept := n.Endpoints[:0]
+	changed := false
+	for _, e := range n.Endpoints {
+		if alive(e.ContainerID) {
+			kept = append(kept, e)
+			continue
+		}
+		if n.Driver == DriverBridge {
+			_ = bridgeDetachEndpoint(epVethName(n.Name, e.ContainerID))
+			_ = bridgeDetachEndpoint(epPeerName(n.Name, e.ContainerID))
+		}
+		changed = true
+	}
+	n.Endpoints = kept
+	if changed {
+		return m.Save(n)
+	}
+	return nil
+}
+
 // AllocatePorts 在 bridge 网络上为容器登记一组端口映射（纯数据；NAT 实化
 // 通过 ApplyNAT 单独执行，以便无 root 时仍可管理定义）。
 func (m *Manager) AllocatePorts(netName, containerID string, ports []*PortMapping) error {
