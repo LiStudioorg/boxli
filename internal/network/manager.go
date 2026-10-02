@@ -161,8 +161,8 @@ func (m *Manager) ensurePreset() error {
 		return fmt.Errorf("检查预置网络失败: %w", err)
 	}
 	n := New(PresetBridgeName, DriverBridge)
-	n.Subnet = PresetBridgeSubnet
-	n.Gateway = PresetBridgeGateway
+	subnet, gateway := pickFreeSubnet(PresetBridgeSubnet)
+	n.Subnet, n.Gateway = subnet, gateway
 	if err := m.Save(n); err != nil {
 		return err
 	}
@@ -171,6 +171,110 @@ func (m *Manager) ensurePreset() error {
 		slog.Warn("预置网桥创建失败，请以 root 运行", "net", PresetBridgeName, "err", err)
 	}
 	return nil
+}
+
+// pickFreeSubnet 返回一个不与宿主既有路由冲突的 /16 网段与网关（.1）。
+// prefer 优先（如 172.18.0.0/16）；若已被其他接口占用（如 Docker 的 br-*
+// 也用 172.18.0.0/16），则顺延从 172.20.0.0/16..172.31.0.0/16 选首个空闲。
+// 冲突症状是"boxli 容器能 Up，但 host→容器路由指向别的网桥、curl 空"。
+func pickFreeSubnet(prefer string) (string, string) {
+	if prefer != "" && !subnetRoutedByOther(prefer) {
+		_, ipnet, _ := net.ParseCIDR(prefer)
+		if ipnet != nil {
+			gw := netIP4Inc(ipnet.IP.To4())
+			return prefer, gw
+		}
+	}
+	for c := 20; c <= 31; c++ {
+		sub := fmt.Sprintf("172.%d.0.0/16", c)
+		if subnetRoutedByOther(sub) {
+			continue
+		}
+		_, ipnet, _ := net.ParseCIDR(sub)
+		if ipnet == nil {
+			continue
+		}
+		return sub, netIP4Inc(ipnet.IP.To4())
+	}
+	// 都给占用了就用 192.168.99.0/24。
+	return "192.168.99.0/24", "192.168.99.1"
+}
+
+// subnetRoutedByOther 报告 net 是否被宿主某非 boxli 接口的路由覆盖。
+func subnetRoutedByOther(subnet string) bool {
+	_, ipnet, err := net.ParseCIDR(subnet)
+	if err != nil {
+		return true // 无法解析视为占用，避免误用
+	}
+	data, err := os.ReadFile("/proc/net/route")
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(string(data), "\n")[1:] {
+		f := strings.Fields(line)
+		if len(f) < 8 {
+			continue
+		}
+		iface, dstHex, maskHex := f[0], f[1], f[7]
+		if iface == PresetBridgeName || iface == "lo" {
+			continue
+		}
+		dst := hexToIP32(dstHex)
+		mask := hexToIP32(maskHex)
+		if dst == 0 && mask == 0 {
+			continue // 默认路由（0.0.0.0/0）不算冲突
+		}
+		// 判断该路由网段与目标网段是否重叠。
+		netU := ipToU32(ipnet.IP.To4())
+		netMask := ipToU32(net.IP(ipnet.Mask).To4())
+		if (dst&netMask) == (netU&netMask) && mask&netMask != 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func hexToIP32(hex string) uint32 {
+	if len(hex) != 8 {
+		return 0
+	}
+	// /proc/net/route 每字节一对 hex、小端存储：字符串末两字符是 IP 最高位字节。
+	// "0001A8C0" → IP 字节 [C0 A8 01 00] → 值 0xC0A80100。
+	nb := func(b byte) uint32 {
+		if b >= '0' && b <= '9' {
+			return uint32(b - '0')
+		}
+		if b >= 'A' && b <= 'F' {
+			return uint32(b-'A') + 10
+		}
+		if b >= 'a' && b <= 'f' {
+			return uint32(b-'a') + 10
+		}
+		return 0
+	}
+	var v uint32
+	// byte0（最高位字节）= 字符串 char6,char7；byte1=char4,5；byte2=char2,3；byte3=char0,1。
+	for b := 0; b < 4; b++ {
+		hi := nb(hex[6-2*b])
+		lo := nb(hex[7-2*b])
+		v = v<<8 | hi<<4 | lo
+	}
+	return v
+}
+
+func ipToU32(ip []byte) uint32 {
+	if len(ip) < 4 {
+		return 0
+	}
+	return uint32(ip[0])<<24 | uint32(ip[1])<<16 | uint32(ip[2])<<8 | uint32(ip[3])
+}
+
+func netIP4Inc(ip []byte) string {
+	if len(ip) < 4 {
+		return ""
+	}
+	// 网关 = .1。
+	return fmt.Sprintf("%d.%d.%d.%d", ip[0], ip[1], ip[2], 1)
 }
 
 // Create 创建新网络并做宿主侧实化（bridge 建网桥、内存回环等）。

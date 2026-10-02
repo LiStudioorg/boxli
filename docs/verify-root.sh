@@ -87,6 +87,10 @@ containers=$("$BOXLI_BIN" ps -a 2>/dev/null | awk 'NR>1{print $1}') || true
 for c in $containers; do
   "$BOXLI_BIN" rm -f "$c" 2>/dev/null || true
 done
+# 删除旧 boxli 网络定义（含 boxli0），确保下次 ensurePreset 重新避让冲突子网
+#（如 Docker 的 br-* 占用 172.18.0.0/16 时自动选别的网段）。
+rm -f "$BOXLI_HOME/networks/$("$BOXLI_BIN" network ls 2>/dev/null | awk 'NR>1{print $1}').json" 2>/dev/null || true
+find "$BOXLI_HOME/networks" -name '*.json' -delete 2>/dev/null || true
 # 删除 boxli cgroup 组
 if [ -d /sys/fs/cgroup/boxli ]; then
   rmdir /sys/fs/cgroup/boxli/* 2>/dev/null || true
@@ -211,7 +215,7 @@ else
   echo "  --- boxli0/网桥 IP ---"; ip addr show boxli0 2>/dev/null | grep -E 'inet |state' || true
   echo "  --- nft NAT 相关 ---"; nft list ruleset 2>/dev/null | grep -E '18080|dnat|boxli' | head -10 || true
   # 定位：直连容器 IP（绕过 DNAT）看是网络通不通，还是 DNAT/ip_forward 问题。
-  cip=$(nft list ruleset 2>/dev/null | grep -oE 'dnat to 172\.18\.[0-9]+\.[0-9]+:80' | head -1 | grep -oE '172\.[0-9.]+' || true)
+  cip=$(nft list ruleset 2>/dev/null | grep -oE 'dnat to [0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:80' | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' || true)
   echo "  --- 直连容器 IP: http://$cip/ ---"
   out2=$(curl -s --max-time 3 "http://$cip/" 2>/dev/null || true)
   echo "    直连 -> $out2"

@@ -5,6 +5,8 @@ package network
 
 import (
 	"errors"
+	"net"
+	"strings"
 	"testing"
 )
 
@@ -28,8 +30,16 @@ func TestListCreatesPreset(t *testing.T) {
 	for _, n := range nets {
 		if n.Name == PresetBridgeName {
 			found = true
-			if n.Driver != DriverBridge || n.Subnet != PresetBridgeSubnet {
+			// 预置可为 bridge、子网合法、网关为 .1——子网可能因避让宿主冲突
+			//（如 Docker 占用 172.18.0.0/16）而不同，不可硬编码。
+			if n.Driver != DriverBridge || n.Subnet == "" || n.Gateway == "" {
 				t.Errorf("预置网络定义不符: %+v", n)
+			}
+			if _, ipnet, err := net.ParseCIDR(n.Subnet); err != nil || ipnet == nil {
+				t.Errorf("预置子网非法: %+v", n)
+			}
+			if !strings.HasSuffix(n.Gateway, ".1") {
+				t.Errorf("预置网关应 *.1: %+v", n)
 			}
 		}
 	}
@@ -146,5 +156,15 @@ func TestDNSResolver(t *testing.T) {
 	}
 	if es := r.Entries(); len(es) == 0 {
 		t.Error("Entries 为空")
+	}
+}
+
+func TestHexToIP32(t *testing.T) {
+	// /proc/net/route 小端：0001A8C0 → 192.168.1.0。
+	if got := hexToIP32("0001A8C0"); got != 0xC0A80100 {
+		t.Fatalf("hexToIP32=%#x", got)
+	}
+	if got := hexToIP32("00000000"); got != 0 {
+		t.Fatalf("全 0 应为 0，实得 %#x", got)
 	}
 }
