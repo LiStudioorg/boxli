@@ -207,6 +207,98 @@ func readHostMountInfo() string {
 	return string(data)
 }
 
+// selinuxAttrExec 是进程 exec 过渡上下文的 procfs 入口。
+//
+// 语义：写入该文件的字符串是**本进程下一次 execve** 时切换到的新 SELinux
+// 上下文。它作用于调用者自己的下一次 exec，而不是任意别的进程——因此必须
+// 在容器 init 进程内、紧邻 execve 之前写，在父进程里写只会影响父进程自己。
+var selinuxAttrExec = "/proc/self/attr/exec"
+
+// readSELinuxExecContext 读取当前继承的 exec 上下文。
+//
+// 返回 (context, ok, err)：
+//   - 系统未启用 SELinux 时内核返回 EINVAL/ENOENT，这是**正常情况**而非错误，
+//     调用方据此跳过（ok=false, err=nil）；
+//   - 读到空串也视为"无上下文"；
+//   - 其它错误（如 EACCES）向上返回，由调用方决定是否降级。
+//
+// 用 /proc/self/attr/exec 而不是 /proc/self/attr/current：前者是 exec 过渡
+// 目标（可写），后者是当前运行上下文（多数策略下不可写）。
+func readSELinuxExecContext(path string) (string, bool, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.EINVAL) ||
+			errors.Is(err, syscall.ENOTSUP) || errors.Is(err, syscall.ENODATA) {
+			return "", false, nil // 未启用 SELinux：正常跳过
+		}
+		return "", false, err
+	}
+	ctx := strings.TrimSpace(string(data))
+	if ctx == "" {
+		return "", false, nil
+	}
+	return ctx, true, nil
+}
+
+// applySELinuxExecContext 把 ctx 写入 path，令容器 init 的 execve 过渡到该
+// 上下文。返回错误由调用方决定是否降级。
+//
+// 只做这一件事：不调用 setenforce、不改任何全局 SELinux 状态、不动策略。
+// 容器进程的上下文应与引擎保持一致（继承），这样"引擎能做的事容器也能做"，
+// 且不会因为放宽标签而扩大攻击面。
+func applySELinuxExecContext(path, ctx string) error {
+	if ctx == "" {
+		return nil
+	}
+	if err := os.WriteFile(path, []byte(ctx), 0o644); err != nil {
+		return fmt.Errorf("写入 %s: %w", path, err)
+	}
+	return nil
+}
+
+// inheritSELinuxContext 在容器 execve 之前继承引擎的 SELinux exec 上下文。
+//
+// 返回读取到的上下文（可能为空）。**任何失败都不阻断容器启动**：
+// SELinux 未启用、策略拒绝写入、内核不支持都只降级为 slog.Warn/Debug。
+// 理由与设计一致——上下文继承是"让容器行为与引擎一致"的优化，
+// 而不是容器能否运行的前提；把它做成硬失败会让非 SELinux 设备全盘不可用。
+//
+// enforcing 下无法设置上下文时，容器内进程可能被策略拦截（例如无法读某类
+// 文件），这种降级必须在日志里说清楚，避免用户面对"某操作莫名失败"而无从
+// 排查。本函数不做任何"假装成功"的处理。
+func inheritSELinuxContext() string {
+	ctx, ok, err := readSELinuxExecContext(selinuxAttrExec)
+	if err != nil {
+		slog.Warn("读取 SELinux exec 上下文失败，容器将沿用内核默认标签",
+			slog.String("path", selinuxAttrExec), slog.Any("err", err))
+		return ""
+	}
+	if !ok {
+		// 未启用 SELinux（绝大多数 Linux 服务器与部分 Android 设备）：
+		// 这是预期路径，不需要噪音日志。
+		slog.Debug("未检测到 SELinux exec 上下文，跳过上下文继承")
+		return ""
+	}
+	if err := applySELinuxExecContext(selinuxAttrExec, ctx); err != nil {
+		slog.Warn("设置 SELinux exec 上下文失败，容器将继续启动；"+
+			"若系统处于 enforcing，容器内进程可能被策略拦截",
+			slog.String("context", ctx), slog.Any("err", err))
+		return ""
+	}
+	slog.Debug("已继承 SELinux exec 上下文", slog.String("context", ctx))
+	return ctx
+}
+
+// executeContainerCmd 是容器 init 的最后一步：设置 SELinux exec 上下文后
+// execve 用户命令。抽成独立函数以便单元测试覆盖上下文处理路径。
+func executeContainerCmd(cmdline, env []string) error {
+	inheritSELinuxContext()
+	if err := syscall.Exec(cmdline[0], cmdline, env); err != nil {
+		return fmt.Errorf("exec %s: %w", cmdline[0], err)
+	}
+	return nil // 不可达
+}
+
 // setupContainerDev 在 rootfs/dev 下装配容器所需的设备环境。
 //
 // 顺序有讲究：
@@ -397,8 +489,12 @@ func RunInit() error {
 		}
 	}
 
-	if err := syscall.Exec(cmdline[0], cmdline, env); err != nil {
-		return fmt.Errorf("exec %s: %w", cmdline[0], err)
+	// 7.5 SELinux：execve 之前继承引擎的 exec 上下文。attr/exec 只对本进程
+	//     的下一次 execve 生效，因此必须紧邻 execve 写入。失败只降级告警。
+	//
+	// 8. execve 用户命令（此后不再返回）。
+	if err := executeContainerCmd(cmdline, env); err != nil {
+		return err
 	}
 	return nil // 不可达
 }

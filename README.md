@@ -188,6 +188,9 @@ boxli boot disable                       # 移除系统服务
   目录，无法提供真正的进程 / 挂载 / 网络 / 资源隔离——这与 Boxli "真隔离" 的
   容器模型冲突，因此官方不支持。
 
+有 Root 设备上的适配细节（SELinux 处理与限制、cgroup v1/v2 回退、
+`/dev` 与 `/proc` 装配、排查指引）见 [docs/android-root.md](docs/android-root.md)。
+
 ## 镜像格式：.boxli
 
 `.boxli` 文件是一个自研容器镜像包：内部由若干**分层 gzip tar** 组成，附一份自研 **`index.json`** 描述层顺序、架构与元数据。
