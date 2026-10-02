@@ -6,6 +6,7 @@
 package runtime
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -57,12 +58,12 @@ func Exec(o *ExecOptions) (int, error) {
 	// 逻辑复杂，此处按 root 容器处理；非 root 已在上方栏）。
 	for _, name := range []string{"mnt", "uts", "ipc", "net"} {
 		if err := setns(nsFds[name], nsFlags(name)); err != nil {
-			return -1, fmt.Errorf("setns %s: %w", name, err)
+			return -1, nsErr(name, err)
 		}
 	}
 	// 进入 PID 命名空间：此后 fork 出的子进程才会落入容器 PID namespace。
 	if err := setns(nsFds["pid"], syscall.CLONE_NEWPID); err != nil {
-		return -1, fmt.Errorf("setns pid: %w", err)
+		return -1, nsErr("pid", err)
 	}
 
 	// 工作目录（此刻已进入容器 mount namespace，按容器内路径解析）。
@@ -186,6 +187,14 @@ func execExitCode(ws syscall.WaitStatus) int {
 		return 128 + int(ws.Signal())
 	}
 	return 1
+}
+
+// nsErr 包装一次 setns 命名空间错误；权限不足时给出 Android-有 Root 的指引。
+func nsErr(name string, err error) error {
+	if errors.Is(err, syscall.EPERM) || errors.Is(err, syscall.EACCES) {
+		return fmt.Errorf("setns %s：namespace 创建失败，权限不足。Android 需 Root，无 Root 环境官方不支持: %w", name, err)
+	}
+	return fmt.Errorf("setns %s: %w", name, err)
 }
 
 // nsFlags 命名空间标记位（syscall 包未导出 CLONE_NEWNET）。

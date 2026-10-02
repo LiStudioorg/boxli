@@ -6,7 +6,7 @@ Boxli 是一个用 Go 编写的轻量级容器引擎：常驻内存 10–20 MiB�
 
 - 🪶 **极轻**：运行时内存目标 10–20 MiB，纯 Go 无 CGO，单个静态二进制。
 - 🧩 **自研镜像格式**：`.boxli` = 分层 gzip tar + 自研 `index.json`，简单、可逐层审计。
-- 📱 **全平台**：Linux 服务器、Android（有 Root / 无 Root）、macOS。
+- 📱 **平台**：Linux 服务器、Android（有 Root）、macOS；Android 无 Root 官方不支持（见《Android 支持策略》）。
 - 🏗 **多架构**：amd64 / arm64 / 386 / riscv64 等同一条命令交叉编译。
 - 🔌 **零外部依赖**：不需要 Docker、containerd 或任何 OCI 组件，装一个 `boxli` 就能用。
 - 🛡 **资源限制**：CPU / 内存 / PID 限额内置于引擎。
@@ -121,12 +121,24 @@ boxli boot disable                       # 移除系统服务
 
 ## 支持平台
 
-| 平台 | 运行路线 | 状态 |
-| --- | --- | --- |
-| Linux 服务器（amd64 / arm64 / riscv64…） | 原生 namespace/cgroups | 开发中 |
-| Android（有 Root） | 原生路线 | 开发中 |
-| Android（无 Root） | proot 路线 | 开发中 |
-| macOS | 轻量虚拟机 | 计划中 |
+| 平台 | 支持级别 |
+| --- | --- |
+| Linux 服务器 | 完整支持 |
+| Android 有 Root | 完整支持 |
+| Android 无 Root | 官方不支持（用户可自行在 proot 等环境中运行，不保证可用性） |
+| macOS | 通过轻量 VM |
+
+### Android 支持策略
+
+- **有 Root**：官方原生支持，走 `native_linux` 后端（namespace + cgroup），
+  功能与 Linux 服务器一致。
+- **无 Root**：官方不支持。Boxli 不做任何 proot 适配、不检测 proot、不集成
+  proot；你可以在 proot / Termux 等用户态 Linux 环境里自行运行 boxli，但官方
+  不保证可用性、不提供技术支持。
+- **为什么无 Root 不支持**：Android 无 Root 环境缺少容器所需的内核隔离能力
+  （namespace / cgroup / setns 等）。任何用户态方案（包括 proot）都只能模拟根
+  目录，无法提供真正的进程 / 挂载 / 网络 / 资源隔离——这与 Boxli "真隔离" 的
+  容器模型冲突，因此官方不支持。
 
 ## 镜像格式：.boxli
 

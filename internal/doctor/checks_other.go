@@ -15,9 +15,9 @@ import (
 //
 // 存在的意义有两条：一是保证全仓库在 linux/darwin/android 上都能编译与
 // `go vet` 通过（AGENTS.md《平台后端：build tags 分文件》）；二是让
-// macOS（vm_darwin）与无 Root Android（proot_android）接入各自后端前，
-// `boxli doctor` 仍然输出**同一组检查 ID**，只是等级为 StatusSkip 并说明
-// "本平台暂不支持"，而不是直接报错或缺失检查项。
+// macOS（vm_darwin）接入各自后端前，`boxli doctor` 仍然输出**同一组检查
+// ID**，只是等级为 StatusSkip 并说明"本平台暂不支持"，而不是直接报错或
+// 缺失检查项。无 Root Android 官方不支持，不在本列表。
 
 // defaultChecker 返回非 Linux 平台的占位检查器：ID 与 Linux 完全一致，
 // 全部为 StatusSkip。
@@ -76,7 +76,7 @@ func (s stubChecker) stubCheck(id string) Check {
 		}
 	case CheckArchHost:
 		c.Detail = hostPlatform() + "，平台后端 " + platformBackend()
-		c.Hint = "macOS 走 vm_darwin（轻量虚拟机），无 Root Android 走 proot_android，均待各自阶段落地"
+		c.Hint = "macOS 走 vm_darwin（轻量虚拟机），待其阶段落地；无 Root Android 官方不支持"
 	case CheckBinaryVersion:
 		if exe, err := os.Executable(); err == nil {
 			c.Detail = "可执行文件 " + exe
@@ -97,7 +97,7 @@ func platformBackend() string {
 	case "darwin":
 		return "vm_darwin"
 	case "android":
-		return "proot_android"
+		return "native_linux（需 Root；无 Root 官方不支持）"
 	case "linux":
 		return "native_linux"
 	}

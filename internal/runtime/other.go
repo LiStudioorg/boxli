@@ -5,8 +5,9 @@
 
 package runtime
 
-// 非 Linux 平台的运行时占位。真实后端：macOS 走 vm_darwin（轻量虚拟机），
-// 无 Root Android 走 proot_android；落地前本文件保证全仓库跨平台可编译。
+// 非 Linux 平台的运行时占位。真实后端：macOS 走 vm_darwin（轻量虚拟机）。
+// Android 有 Root 走 native_linux；无 Root 官方不支持（见 AGENTS.md《Android
+// 支持策略》）。落地前本文件保证全仓库跨平台可编译。
 
 // RunInit 非 Linux 平台不支持。
 func RunInit() error { return ErrUnsupported }

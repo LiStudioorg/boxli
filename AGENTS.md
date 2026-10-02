@@ -65,10 +65,20 @@ boxli/
 | 文件后缀 | build tag | 适用平台 |
 | --- | --- | --- |
 | `*_linux.go` | `//go:build linux`（后端标记 `native_linux`） | Linux 服务器、有 Root 的 Android：原生 namespace/cgroups 路线 |
-| `*_android.go` | `//go:build android && !cgo`（后端标记 `proot_android`） | 无 Root 的 Android：proot 路线 |
 | `*_darwin.go` | `//go:build darwin`（后端标记 `vm_darwin`） | macOS：轻量虚拟机路线 |
 
 约定：每个后端实现同一组内部接口，公共层只依赖接口；新平台 = 新 tag + 新文件，不改公共代码。
+
+## Android 支持策略
+
+- **Android 有 Root：官方原生支持**。走 `native_linux` 后端，使用
+  namespace + cgroup，功能与 Linux 服务器一致，完整可用。
+- **Android 无 Root：官方不支持**。Boxli 不做任何 proot 适配、不检测 proot、
+  不集成 proot；用户可在 proot / Termux 等用户态 Linux 环境里自行运行 boxli，
+  但官方不保证可用性、不提供技术支持。
+- **原因**：无 Root 的 Android 缺少容器所需的内核隔离能力（namespace /
+  cgroup / setns 等），任何用户态方案（包括 proot）都无法提供真正的隔离。
+- **代码约束**：不引入、不检测 proot / Termux；不影响其他平台行为。
 
 ## 开机自启动机制
 
@@ -105,7 +115,7 @@ boxli run -d --restart no             alice/myapp:v1
 | Linux | `/etc/systemd/system/boxli.service` | `systemctl daemon-reload && systemctl enable boxli` |
 | macOS | `~/Library/LaunchAgents/dev.boxli.boot.plist` | `launchctl load` |
 | Android（Root） | `/data/adb/service.d/boxli.sh`（赋执行权限） | Magisk service.d |
-| Android（无 Root） | `~/.termux/boot/boxli.sh` | 检测 Termux:Boot，未安装时提示用户 |
+| Android（无 Root） | 不支持（见《Android 支持策略》） | 官方不提供自启支持 |
 
 - `boxli boot enable`：写入服务文件并注册，完成后输出服务文件路径与状态。
 - `boxli boot disable`：自动移除对应平台的系统服务文件并取消注册。
@@ -168,7 +178,7 @@ boxli shutdown       由系统服务停止时调用，优雅停止自启容器
 
 1. **禁止**引入任何第三方容器组件 / 容器库（Docker、containerd、runc、buildkit、OCI 相关库、cgroups 库等）——容器生态完全自研。
 2. **禁止**做任何形式的 Docker / OCI 兼容（不做镜像格式转换、不实现Distribution API），Boxli 只认 `.boxli`。
-3. **无 Root Android 只允许 proot 路线**，不得尝试 ptrace 之外的特权方案或引导用户提权。
+3. **Android 无 Root 官方不支持**（见《Android 支持策略》）：不得引入/检测 proot 或 Termux、不得引导用户提权，也不得尝试任何用户态隔离方案冒充真隔离。
 4. **禁止** CGO。
 5. **禁止**在运行时引入常驻守护进程设计（引擎以单二进制按需执行为目标，服务化另立 RFC）。
 6. **禁止**未经文档约定就新增顶层目录或改变 `pkg/sdk` 公开 API。

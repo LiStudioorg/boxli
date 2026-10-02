@@ -97,6 +97,10 @@ func StartWith(cfg *Config, onChildStart func(pid int), opts *StartOptions) (*St
 
 	slog.Debug("启动容器 init", "rootfs", rootfsAbs, "cmd", cfg.Cmd, "rootless", rootless)
 	if err := cmd.Start(); err != nil {
+		// 权限不足（EPERM / EACCES）时给出 Android-有 Root 的清晰指引，不 panic。
+		if errors.Is(err, syscall.EPERM) || errors.Is(err, syscall.EACCES) {
+			return nil, fmt.Errorf("fork 容器 init 失败：namespace 创建失败，权限不足。Android 需 Root，无 Root 环境官方不支持: %w", err)
+		}
 		return nil, fmt.Errorf("fork 容器 init 失败: %w", err)
 	}
 	if onChildStart != nil {
