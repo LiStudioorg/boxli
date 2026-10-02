@@ -330,10 +330,21 @@ func TestWatcherDebouncesQuickWrites(t *testing.T) {
 	time.Sleep(2 * testInterval)
 
 	// 4 次快速写入，间隔远小于 debounce 窗口：应被折叠成一个批次。
+	//
+	// 定时脆弱点：debounce 计时器只在某次轮询**观察到**变化时才启动。
+	// 若写入串跨越「轮询 → debounce 过期 → 再次轮询」这个边界，就会合法
+	// 地产生第二个批次，测试随抖动偶发误报。
+	//
+	// 为了不受调度抖动影响，这里在写入**之前**先对齐到刚过完一次轮询的
+	// 时刻：等待一个略大于 Interval 的静默期，使下一次轮询几乎必然会
+	// 观测到整串写入。写入本身用极小间隔完成，确保它们落在同一次轮询
+	// 观测内，从而稳定折叠为单一批次。
+	time.Sleep(testInterval + 5*time.Millisecond)
+
 	target := filepath.Join(dir, "hot.go")
 	for i := 0; i < 4; i++ {
 		writeFile(t, target, strings.Repeat("x", i+1))
-		time.Sleep(2 * time.Millisecond)
+		time.Sleep(200 * time.Microsecond)
 	}
 
 	batch := recvBatch(t, ch, 2*time.Second, "debounced batch")
