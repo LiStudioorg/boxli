@@ -5,12 +5,14 @@
 # boxli v0.5.x root 真机验证脚本。
 #
 # 用法：以 root 运行：  sudo bash docs/verify-root.sh   （或 root 下直接 bash）
+#       只清残留不验证： sudo bash docs/verify-root.sh --cleanup-only
 # 完整输出（stdout+stderr）追加到 /tmp/boxli-verify.log，结束后可 cat 查看回贴。
 #
 # 设计：
 #   - set -e：任一步失败立即停并打印诊断
 #   - 每步先 echo 期望输出，再执行并回显实际输出
-#   - 幂等：开头自动清理残留（旧容器、cgroup、veth、NAT、本地 hub、demo 文件）
+#   - 幂等：开头自动清理残留（旧容器、孤儿 shim、cgroup、veth、NAT、hub、demo 文件）
+#   - 清理逻辑集中在 cleanup_orphans()，可用 --cleanup-only 单独调用
 #   - 结束后打印 PASS/FAIL 计数
 
 set -euo pipefail
@@ -25,6 +27,183 @@ fail() { FAIL=$((FAIL+1)); echo "[FAIL] $*"; }
 step() { echo; echo "===== $* ====="; }
 ok()   { echo "  -> ok: $*"; }
 skip() { echo "  -> skipped: $*"; }
+
+# ---------------------------------------------------------------------------
+# 参数：--cleanup-only 只做残留清理后退出（不跑 A–J 验证）。
+#
+# 为什么需要独立入口：验证脚本跑到一半失败（或 boxli 被 Ctrl+C 打断）时，
+# 宿主上会留下孤儿 shim 进程、空 cgroup 目录、残留 veth/NAT。这些残留平时
+# 只有再跑一次完整验证才会被顺带清掉，而用户往往只想"先把环境弄干净"。
+# ---------------------------------------------------------------------------
+CLEANUP_ONLY=no
+for arg in "$@"; do
+  case "$arg" in
+    --cleanup-only) CLEANUP_ONLY=yes ;;
+    -h|--help)
+      echo "用法: sudo bash docs/verify-root.sh [--cleanup-only]"
+      echo "  --cleanup-only  只清理 boxli 残留（容器/孤儿 shim/cgroup/veth/NAT）后退出"
+      exit 0 ;;
+    *) echo "未知参数: $arg（见 --help）" >&2; exit 2 ;;
+  esac
+done
+
+cleanup_orphans() {
+  # 清理 boxli 遗留资源。**只碰 boxli 自己命名的对象**：
+  #   - cgroup：/sys/fs/cgroup/boxli[/...] 下无容器的组
+  #   - shim：env 里带 BOXLI_SHIM=1 的进程（boxli 自己打的标记）
+  #   - 网络：名为 boxli* 的网桥，以及挂在它上面/同 ID 的 veth*/vpe*
+  #   - nft：table ip boxli / boxli-fwd
+  # 绝不按"看起来像容器"的启发式删进程或删网卡——宿主上可能跑着 Docker，
+  # 它的 veth/网桥/cgroup 与 boxli 无关（误删直接打断别人的生产容器）。
+  local root="${1:-${BOXLI_HOME:-/root/.boxli}}"
+  echo "  数据目录: $root"
+
+  # --- 1. 已知容器：交给 boxli 自己优雅收尾（会顺带清 cgroup/网络） ---
+  local ids id
+  # 先记下每个容器的 initPid —— 第 1 步的 boxli rm 会把 runtime.json 一起
+  # 删掉，之后再想知道"这个孤儿进程当初是不是容器 init"就没有依据了。
+  local known_inits="" cdir kpid
+  if [ -d "$root/containers" ]; then
+    for cdir in "$root"/containers/*/; do
+      [ -f "$cdir/runtime.json" ] || continue
+      kpid=$(sed -n 's/.*"initPid"[[:space:]]*:[[:space:]]*\([0-9]\+\).*/\1/p' "$cdir/runtime.json" 2>/dev/null | head -1)
+      [ -n "$kpid" ] && known_inits="$known_inits $kpid"
+    done
+  fi
+
+  ids=$("$BOXLI_BIN" ps -a -q 2>/dev/null | grep -E '^[0-9a-f]{12}$') || true
+  for id in $ids; do
+    "$BOXLI_BIN" stop "$id" >/dev/null 2>&1 || true
+    "$BOXLI_BIN" rm -f "$id" >/dev/null 2>&1 || true
+  done
+  [ -n "$ids" ] && echo "  已清理容器: $(echo "$ids" | tr '\n' ' ')"
+
+  # --- 2. 孤儿 shim：boxli 用 env 标记 shim 身份（internal/shim EnvMarker）。
+  #         这些进程没有命令行参数可辨认（靠 env 分流），必须读 /proc/<pid>/environ。
+  #         ppid=1 不是可靠判据：前台 run 的 shim 父进程是 shell，异常退出后
+  #         才被 init 收养，两种都要清。 ---
+  local shim_pids="" p
+  # 按进程名 pgrep 不可靠：二进制常被改名（boxli-25 / /usr/local/bin/boxli 等），
+  # 而 shim 恰恰没有命令行参数可辨认。因此遍历 /proc 读 environ。
+  for d in /proc/[0-9]*; do
+    p=${d#/proc/}
+    [ -r "$d/environ" ] || continue
+    if tr '\0' '\n' < "$d/environ" 2>/dev/null | grep -q '^BOXLI_SHIM=1$'; then
+      shim_pids="$shim_pids $p"
+    fi
+  done
+  shim_pids=$(echo "$shim_pids" | tr ' ' '\n' | grep -E '^[0-9]+$' | sort -u) || true
+  if [ -n "$shim_pids" ]; then
+    # shellcheck disable=SC2086
+    kill -TERM $shim_pids 2>/dev/null || true
+    sleep 1
+    local alive=""
+    for p in $shim_pids; do kill -0 "$p" 2>/dev/null && alive="$alive $p"; done
+    # shellcheck disable=SC2086
+    [ -n "$alive" ] && kill -KILL $alive 2>/dev/null || true
+    echo "  已终止孤儿 shim:$(echo "$shim_pids" | tr '\n' ' ')"
+  else
+    echo "  无孤儿 shim"
+  fi
+
+  # --- 2b. 孤儿容器 init：shim 被 kill -9 后，容器 1 号进程会被 init 收养
+  #         （ppid=1）并继续运行，boxli stop 已经找不到 shim 了。判据必须
+  #         精确到"boxli 自己认定的 init"：
+  #           a) runtime.json 里记录的 initPid（boxli 写的，不是猜的），且
+  #           b) 该 pid 的 /proc/<pid>/cgroup 确实在 boxli 组下。
+  #         两个条件同时成立才 kill——避免按进程名/端口等启发式误杀宿主进程。
+  local orphan="" p
+  for p in $known_inits; do
+    kill -0 "$p" 2>/dev/null || continue
+    # 双保险：该 pid 现在必须仍在 boxli 的 cgroup 里（防止 pid 已被复用）。
+    if [ -r "/proc/$p/cgroup" ] && grep -q '/boxli/' "/proc/$p/cgroup" 2>/dev/null; then
+      orphan="$orphan $p"
+    fi
+  done
+  # 兜底（正向判据，同样精确）：直接读内核的 boxli cgroup 组里挂着的进程。
+  # 能走到这里说明这些组已不被 boxli 记账（状态目录已删），是确凿的孤儿。
+  if [ -d /sys/fs/cgroup/boxli ]; then
+    while read -r d; do
+      case "$d" in
+        /sys/fs/cgroup/boxli/[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
+        *) continue ;;
+      esac
+      local cid pidl
+      cid=${d##*/}
+      # 仍在 boxli 记账中的容器不碰（第 1 步刚处理过，或本就不该由这里管）。
+      [ -d "$root/containers/$cid" ] && continue
+      pidl=$(cat "$d/cgroup.procs" 2>/dev/null) || continue
+      for p in $pidl; do orphan="$orphan $p"; done
+    done < <(find /sys/fs/cgroup/boxli -mindepth 1 -maxdepth 1 -type d 2>/dev/null)
+  fi
+  orphan=$(echo "$orphan" | tr ' ' '\n' | grep -E '^[0-9]+$' | sort -u) || true
+  if [ -n "$orphan" ]; then
+    # shellcheck disable=SC2086
+    kill -TERM $orphan 2>/dev/null || true
+    sleep 1
+    local still=""
+    for p in $orphan; do kill -0 "$p" 2>/dev/null && still="$still $p"; done
+    # shellcheck disable=SC2086
+    [ -n "$still" ] && kill -KILL $still 2>/dev/null || true
+    echo "  已回收孤儿容器 init:$(echo "$orphan" | tr '\n' ' ')"
+  else
+    echo "  无孤儿容器 init"
+  fi
+
+  # --- 3. cgroup：只删 boxli 自己的组，**先子后父**（非空目录删不掉）。
+  #         仍在运行的容器的组里有进程，内核会让 rmdir 失败 → 自动跳过，
+  #         因此不需要额外判断"是否在用"。 ---
+  if [ -d /sys/fs/cgroup/boxli ]; then
+    local depth=0
+    # find -depth 天然保证子目录先于父目录，等价于"先内后外"。
+    find /sys/fs/cgroup/boxli -depth -type d -print 2>/dev/null | while read -r d; do
+      rmdir "$d" 2>/dev/null || true
+    done
+    [ -d /sys/fs/cgroup/boxli ] && depth=1
+    if [ "$depth" = 0 ]; then echo "  cgroup: boxli 组已清空"; else
+      echo "  cgroup: 剩余容器组 $(find /sys/fs/cgroup/boxli -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l) 个（组内仍有进程，已跳过）"
+    fi
+  else
+    echo "  cgroup: 无 boxli 组"
+  fi
+
+  # --- 4. 网络：只认 boxli 自己的网桥名（ifaceName 生成的 boxli* 前缀）。
+  #         veth 只删"属于 boxli 网桥"的（master 是 boxli*），
+  #         以及无 master 且**未指向任何 docker 网桥**的 vpe*（vpe 前缀是
+  #         boxli 专属，Docker 不用）；Docker 的 vethXXXX 一律不碰。 ---
+  local br if
+  for br in $(ip -o link show 2>/dev/null | awk -F': ' '{print $2}' | grep -E '^boxli([0-9]+|_.*)?$'); do
+    ip link del "$br" 2>/dev/null || true
+    echo "  已删除网桥: $br"
+  done
+  for if in $(ip -o link show type veth 2>/dev/null | awk -F': ' '{print $2}' | grep -E '^vpe[0-9a-f]{7}$'); do
+    ip link del "$if" 2>/dev/null || true
+    echo "  已删除容器侧 veth: $if"
+  done
+  for if in $(ip -o link show type veth 2>/dev/null | grep -vE 'master (docker0|br-[0-9a-f]+|lxdbr[0-9]+)' \
+              | awk -F': ' '{print $2}' | grep -E '^veth[0-9a-f]{7}$'); do
+    # 到这里剩下的 veth 都没有 docker 侧 master；boxli 异常退出留下的宿主端
+    # 正是这一类。docker 活容器的 veth 一定 master=docker0/br-xxx，已被排除。
+    ip link del "$if" 2>/dev/null || true
+    echo "  已删除宿主侧 veth: $if"
+  done
+  nft flush table ip boxli 2>/dev/null || true
+  nft delete table ip boxli 2>/dev/null || true
+  nft flush table ip boxli-fwd 2>/dev/null || true
+  nft delete table ip boxli-fwd 2>/dev/null || true
+
+  # --- 5. 数据目录状态文件：只在**显式指定过 BOXLI_HOME** 时才删。
+  #         默认的 /root/.boxli 很可能是真实使用中的引擎目录，清进程和残留
+  #         是安全的，但把别人的容器状态整目录删掉就不是"清理残留"了。
+  if [ -n "${BOXLI_HOME:-}" ] && [ -d "$root/containers" ]; then
+    find "$root/containers" -mindepth 1 -maxdepth 1 -type d -exec rm -rf {} + 2>/dev/null || true
+    find "$root/networks" -name '*.json' -delete 2>/dev/null || true
+    echo "  已清空显式指定的数据目录"
+  else
+    echo "  保留数据目录状态文件（未显式指定 BOXLI_HOME）"
+  fi
+  echo "  清理完成"
+}
 
 # 环境信息
 step "环境信息"
@@ -48,6 +227,14 @@ export BOXLI_HOME
 WORK=/tmp/boxli-verify-work
 mkdir -p "$WORK"
 echo "  数据目录: $BOXLI_HOME"
+
+if [ "$CLEANUP_ONLY" = "yes" ]; then
+  step "仅清理模式（--cleanup-only）"
+  cleanup_orphans "$BOXLI_HOME"
+  echo
+  echo "完整日志：cat $LOG"
+  exit 0
+fi
 
 ############ 前置检查 ############
 step "前置检查"
@@ -117,38 +304,13 @@ fi
 export HOST_FWD_SUPPORTED
 
 ############ 清理残留（幂等起点） ############
-step "清理残留（旧容器 / cgroup / veth / NAT / hub / demo 文件）"
-# 停止并删除 demo 容器（-f 强制）
-"$BOXLI_BIN" rm -f demo demo2 demo3 2>/dev/null || true
-"$BOXLI_BIN" stop demo demo2 demo3 2>/dev/null || true
-# 输出容器名里的 demo 全停全删
-containers=$("$BOXLI_BIN" ps -a 2>/dev/null | awk 'NR>1{print $1}') || true
-for c in $containers; do
-  "$BOXLI_BIN" rm -f "$c" 2>/dev/null || true
-done
-# 删除旧 boxli 网络定义（含 boxli0），确保下次 ensurePreset 重新避让冲突子网
-#（如 Docker 的 br-* 占用 172.18.0.0/16 时自动选别的网段）。
-rm -f "$BOXLI_HOME/networks/$("$BOXLI_BIN" network ls 2>/dev/null | awk 'NR>1{print $1}').json" 2>/dev/null || true
-find "$BOXLI_HOME/networks" -name '*.json' -delete 2>/dev/null || true
-# 删除 boxli cgroup 组
-if [ -d /sys/fs/cgroup/boxli ]; then
-  rmdir /sys/fs/cgroup/boxli/* 2>/dev/null || true
-fi
-rmdir /sys/fs/cgroup/boxli 2>/dev/null || true
-# 删除 boxli0 网桥与残留 veth（grep 无匹配时退出 1，pipefail 下须兜底）
-ip link del boxli0 2>/dev/null || true
-leaked_veth=$(ip link show 2>/dev/null | grep -oE 'veth[a-f0-9]{7}|vpe[a-f0-9]{7}' | sort -u) || true
-for if in $leaked_veth; do
-  ip link del "$if" 2>/dev/null || true
-done
-# 清空 nft boxli 表
-nft flush table ip boxli 2>/dev/null || true
-nft delete table ip boxli 2>/dev/null || true
-# 清掉本地 hub serve 残留
+step "清理残留（旧容器 / 孤儿 shim / cgroup / veth / NAT / hub / demo 文件）"
+# 与 --cleanup-only 共用同一个函数，避免两处清理逻辑漂移。
+cleanup_orphans "$BOXLI_HOME"
+# 验证脚本专属的残留：本地 hub 与 demo 构建上下文。
 pkill -f 'boxli hub serve' 2>/dev/null || true
 rm -rf "$WORK/demo-src" "$WORK/hub" 2>/dev/null || true
-# 删旧 demo 镜像（若 build 会覆盖则不用删，避免破坏已有数据）
-echo "  清理完成"
+echo
 
 ############ 构建 demo:v1 ############
 step "A. 构建 demo:v1 "
