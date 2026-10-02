@@ -56,8 +56,8 @@ func TestVethNames(t *testing.T) {
 	if got := epVethName("boxli0", "123456789012"); got != "veth"+shortID("123456789012", 7) {
 		t.Fatalf("epVethName 不一致: %s", got)
 	}
-	if epPeerName("boxli0", "123") != epPeerName("boxli0", "123") {
-		t.Error("epPeerName 不确定")
+	if got := epPeerName("boxli0", "123456789012"); got != "vpe"+shortID("123456789012", 7) {
+		t.Fatalf("epPeerName 不一致: %s", got)
 	}
 }
 
