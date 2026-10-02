@@ -98,7 +98,7 @@ func LinkByName(name string) (*Link, error) {
 		if err != nil {
 			continue
 		}
-		if string(attrBytes(attrs, IFLA_IFNAME)) != name {
+		if ifName := trimAttrString(attrBytes(attrs, IFLA_IFNAME)); ifName != name {
 			continue
 		}
 		return &Link{
@@ -109,6 +109,17 @@ func LinkByName(name string) (*Link, error) {
 		}, nil
 	}
 	return nil, fmt.Errorf("链路 %s: %w", name, ErrLinkNotFound)
+}
+
+// trimAttrString 去掉内核字符串属性末尾的 NUL/对齐填充（IFLA_IFNAME 等是
+// NUL 结尾，attrBytes 原样返回含填充字节）；不足 3 字节（如 u32 属性）原样返回。
+func trimAttrString(b []byte) string {
+	for i := len(b) - 1; i >= 0; i-- {
+		if b[i] != 0 {
+			return string(b[:i+1])
+		}
+	}
+	return string(b)
 }
 
 // LinkUp / LinkDown 切换接口上下线。
