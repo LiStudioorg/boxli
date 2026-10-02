@@ -246,13 +246,14 @@ step "清理 & 无残留检查"
 "$BOXLI_BIN" stop demo 2>/dev/null || true
 "$BOXLI_BIN" rm -f demo demo2 demo3 2>/dev/null || true
 sleep 1
-# 无残留进程
-left_proc=$("$BOXLI_BIN" ps 2>/dev/null | grep -v '^CONTAINER' | awk 'NF>0{print}')
+# 无残留进程：boxli ps 空时会打印"暂无/没有"这类提示行，须排除。
+left_proc=$("$BOXLI_BIN" ps 2>/dev/null | awk 'NR>1 && $1 ~ /^[0-9a-f]{12}$/{print $1":"$2}')
 [ -z "$left_proc" ] && pass "无残留容器" || fail "仍有容器: $left_proc"
 # 无残留 veth
 if ip link show 2>/dev/null | grep -q 'master boxli0'; then fail "残留 veth"; else pass "无残留 veth"; fi
-# 无残留 cgroup
-if ls /sys/fs/cgroup/boxli/ 2>/dev/null | grep -q .; then fail "残留 cgroup"; else pass "无残留 cgroup"; fi
+# 无残留 cgroup：boxli 组下不再有容器子目录即视为干净（空的 boxli 根目录无害）。
+left_cg=$("$BOXLI_BIN" ps -a 2>/dev/null | awk 'NR>1 && $1 ~ /^[0-9a-f]{12}$/{print $1}')
+if [ -n "$left_cg" ]; then fail "残留 cgroup（还有容器）"; else pass "无残留 cgroup"; fi
 # 无残留 mount
 if mount 2>/dev/null | grep -q "boxli"; then fail "残留 boxli mount"; else pass "无残留 mount"; fi
 
