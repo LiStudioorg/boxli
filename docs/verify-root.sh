@@ -32,7 +32,7 @@ echo "  内核: $(uname -r)  ($(uname -m))"
 echo "  架构: $(uname -m)"
 echo "  用户: $(id -u 2>/dev/null) ($(id -un 2>/dev/null))"
 echo "  cgroup: $(cat /proc/self/cgroup 2>/dev/null | head -1)"
-if [ -d /sys/fs/cgroup/cgroup.controllers ]; then echo "  cgroup v2: yes"; else echo "  cgroup v2: NO"; fi
+if [ -e /sys/fs/cgroup/cgroup.controllers ]; then echo "  cgroup v2: yes"; else echo "  cgroup v2: NO"; fi
 if command -v nft >/dev/null 2>&1; then echo "  nft: $(nft --version 2>&1 | head -1)"; else echo "  nft: NOT FOUND"; fi
 if command -v ip >/dev/null 2>&1; then echo "  iproute2: $(ip -V 2>&1 | head -1)"; else echo "  iproute2: NOT FOUND"; fi
 if command -v curl >/dev/null 2>&1; then echo "  curl: $(curl --version 2>&1 | head -1)"; else echo "  curl: NOT FOUND"; fi
@@ -53,7 +53,7 @@ echo "  数据目录: $BOXLI_HOME"
 step "前置检查"
 if [ "$(id -u)" != "0" ]; then fail "需要 root（当前 uid=$(id -u)）"; else pass "root 权限"; fi
 grep -q '^1 ' /proc/self/cgroup 2>/dev/null || true
-if [ -d /sys/fs/cgroup/cgroup.controllers ]; then pass "cgroup v2"; else fail "cgroup v2 未挂载"; fi
+if [ -e /sys/fs/cgroup/cgroup.controllers ]; then pass "cgroup v2"; else fail "cgroup v2 未挂载"; fi
 command -v nft >/dev/null 2>&1 && pass "nft 存在" || fail "缺 nft（apt install nftables）"
 command -v ip  >/dev/null 2>&1 && pass "iproute2 存在" || fail "缺 iproute2"
 command -v curl >/dev/null 2>&1 && pass "curl 存在" || fail "缺 curl"
@@ -124,7 +124,7 @@ FROM scratch
 COPY server /server
 ENTRYPOINT ["/server"]
 BOXEOF
-"$BOXLI_BIN" build -t demo:v1 "$WORK/demo-src"
+( cd "$WORK/demo-src" && "$BOXLI_BIN" build -t demo:v1 --file "$WORK/demo-src/Boxfile" . )
 "$BOXLI_BIN" images | grep -q 'demo' && pass "demo:v1 已在镜像列表" || fail "demo:v1 未导入"
 
 # 容器名 -> ID（boxli 无 inspect，靠 ps -a 解析）
