@@ -179,14 +179,27 @@ func (s *Store) CreateContainer(cfg *ContainerConfig) error {
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		return fmt.Errorf("创建容器根目录失败: %w", err)
 	}
-	// 名字唯一性：扫描现有 config.json（容器数量级很小，直接线性查）。
-	names, err := s.containerNames()
+	// 名字唯一性：用 O_EXCL 锁文件原子抢占，杜绝并发同名都通过的 TOCTOU。
+	// claimName 失败即名字已被占用（他人持锁），直接拒绝；不做扫描兜底，
+	// 避免并发下互相删锁竞争。旧容器（升级前，无锁文件）首次再建/列出时
+	// claimName 会成功创建锁。
+	claimed, err := s.claimName(cfg.Name)
 	if err != nil {
 		return err
 	}
-	if names[cfg.Name] {
+	if !claimed {
+		// 名字已被占用（别处持锁或有 live 容器）。孤儿锁由 RemoveContainer 在
+		// 容器删除时释放，正常不残留；此处分歧即拒绝，保证并发单胜者。
 		return fmt.Errorf("容器名 %q 已被占用: %w", cfg.Name, ErrContainerExists)
 	}
+	// 锁已抢占：后续任何失败都释放，避免泄漏锁。
+	release := true
+	defer func() {
+		if release {
+			_ = s.releaseName(cfg.Name)
+		}
+	}()
+
 	dir := s.ContainerDir(cfg.ID)
 	if _, err := os.Stat(dir); err == nil {
 		return fmt.Errorf("容器目录 %s 已存在: %w", cfg.ID, ErrContainerExists)
@@ -208,7 +221,39 @@ func (s *Store) CreateContainer(cfg *ContainerConfig) error {
 	if err := os.Rename(tmp, filepath.Join(dir, "config.json")); err != nil {
 		return fmt.Errorf("落位 config.json 失败: %w", err)
 	}
+	release = false // 成功：保留名字锁
 	return nil
+}
+
+// namesRoot 存放名字唯一性锁文件 <root>/names/<name>。
+func (s *Store) namesRoot() string { return filepath.Join(s.Root, "names") }
+
+// claimName 用 O_CREATE|O_EXCL 原子抢占名字。true=抢占成功；false=已被占用。
+func (s *Store) claimName(name string) (bool, error) {
+	if name == "" {
+		return false, nil
+	}
+	dir := s.namesRoot()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return false, fmt.Errorf("创建名字锁目录失败: %w", err)
+	}
+	f, err := os.OpenFile(filepath.Join(dir, name), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+	if err == nil {
+		_ = f.Close()
+		return true, nil
+	}
+	if !os.IsExist(err) {
+		return false, fmt.Errorf("抢占容器名 %q 失败: %w", name, err)
+	}
+	return false, nil
+}
+
+// releaseName 释放名字锁。
+func (s *Store) releaseName(name string) error {
+	if name == "" {
+		return nil
+	}
+	return os.Remove(filepath.Join(s.namesRoot(), name))
 }
 
 // WriteContainerConfig 原子重写某容器已存在的 config.json（如启动前解析出
@@ -234,6 +279,10 @@ func (s *Store) WriteContainerConfig(cfg *ContainerConfig) error {
 // RemoveContainer 删除容器状态目录（配置、运行状态、该容器独占 rootfs）。
 // 供启动失败等清理路径调用；共享层缓存不受影响。
 func (s *Store) RemoveContainer(id string) error {
+	// 先取容器名以释放名字锁。
+	if cfg, err := s.LoadContainer(id); err == nil {
+		_ = s.releaseName(cfg.Name)
+	}
 	if err := os.RemoveAll(s.ContainerDir(id)); err != nil {
 		return fmt.Errorf("删除容器目录失败: %w", err)
 	}

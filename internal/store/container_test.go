@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -230,5 +231,50 @@ func TestContainerIDFormat(t *testing.T) {
 	id2, _ := NewContainerID()
 	if id == id2 {
 		t.Fatal("两次 ID 相同")
+	}
+}
+
+// TestContainerNameConflictConcurrent 并发创建同名容器：必须只有一个成功，
+// 其余 ErrContainerExists（修复名字唯一性 TOCTOU —— 并发 run 同名竞态）。
+func TestContainerNameConflictConcurrent(t *testing.T) {
+	s := &Store{Root: t.TempDir()}
+	const n = 8
+	var wg sync.WaitGroup
+	ok := make(chan error, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ok <- s.CreateContainer(newCfg(t, s, "web"))
+		}()
+	}
+	wg.Wait()
+	close(ok)
+	success := 0
+	for err := range ok {
+		if err == nil {
+			success++
+		} else if !errors.Is(err, ErrContainerExists) {
+			t.Fatalf("非重名错误: %v", err)
+		}
+	}
+	if success != 1 {
+		t.Fatalf("并发同名期望恰好 1 个成功，实得 %d", success)
+	}
+	// 名字锁仍占用，改不同名可建。
+	if err := s.CreateContainer(newCfg(t, s, "web2")); err != nil {
+		t.Fatalf("不同名仍报错: %v", err)
+	}
+	// 删掉 web 后可复用名字。
+	all, _ := s.ListContainers()
+	for _, c := range all {
+		if c.Name == "web" {
+			if err := s.RemoveContainer(c.ID); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err := s.CreateContainer(newCfg(t, s, "web")); err != nil {
+		t.Fatalf("删除后不能复用名字: %v", err)
 	}
 }
