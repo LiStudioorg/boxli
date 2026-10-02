@@ -5,6 +5,7 @@ package resource
 
 import (
 	"errors"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -71,5 +72,12 @@ func TestErrUnsupportedWrap(t *testing.T) {
 	err := c.writeNetworkBandwidth(1 << 10)
 	if !errors.Is(err, ErrUnsupported) {
 		t.Fatalf("应包装 ErrUnsupported，实得 %v", err)
+	}
+}
+
+// TestEnableControllersReadOrMissing 验证 readOr 兜底解析（无 cgroup 时防御）。
+func TestReadOrDefault(t *testing.T) {
+	if got := readOr("def", filepath.Join(t.TempDir(), "nope")); got != "def" {
+		t.Fatalf("readOr 默认值 %q", got)
 	}
 }

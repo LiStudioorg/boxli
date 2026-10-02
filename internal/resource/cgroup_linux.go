@@ -23,10 +23,50 @@ func Available() bool {
 	return err == nil && len(data) > 0
 }
 
+// controllers 需要开给 boxli 子组的控制器，写进 <boxli>/cgroup.subtree_control。
+// 注意：只有此处 enable 后，boxli/<id>/cpu.max|memory.max|pids.max 等才可写；
+// 若不 enable，cgroup v2 子组写这些限制会 EPERM（此前 --memory/--cpus 静默落空）。
+const controllers = "cpu memory pids"
+
+// enableControllers 在 boxli 父组的 cgroup.subtree_control 里启用容器限制所需
+// 的控制器（cpu/memory/pids）。已在更外层启用时追加挂到本组；幂等、容错。
+func enableControllers() error {
+	if !Available() {
+		return fmt.Errorf("cgroups v2 不可用: %w", ErrUnsupported)
+	}
+	path := filepath.Join(CgroupV2Mount, BoxliGroup, "cgroup.subtree_control")
+	want := controllers
+	existing := " " + strings.TrimSpace(readOr("", path)) + " "
+	// 只追加缺失的控制器，避免重复。
+	var add []string
+	for _, c := range strings.Fields(want) {
+		if existing == " "+c+" " || strings.Contains(existing, c+" ") {
+			continue
+		}
+		add = append(add, "+"+c)
+	}
+	if len(add) == 0 {
+		return nil
+	}
+	return os.WriteFile(path, []byte(strings.Join(add, " ")), 0o644)
+}
+
+func readOr(def, path string) string {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return def
+	}
+	return strings.TrimSpace(string(b))
+}
+
 // Setup 创建容器专属 cgroup 并写入全部限制。l 为空或 Empty() 时仍创建组
 // （便于 stats 统一采集），只是不写限制。
 func Setup(containerID string, l *Limits) (*Cgroup, error) {
 	c := NewCgroup(containerID)
+	// cgroup v2：必须在父组 subtree_control 启用控制器，子组的限制文件才可写。
+	if err := enableControllers(); err != nil {
+		return nil, err
+	}
 	if err := os.MkdirAll(c.Path, 0o755); err != nil {
 		return nil, fmt.Errorf("创建 cgroup %s: %w", c.Path, err)
 	}
