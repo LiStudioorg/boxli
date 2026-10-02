@@ -32,6 +32,9 @@ type Options struct {
 	OnStart func(pid int)
 }
 
+// startWithFn 是 runtime.StartWith 的注入点（测试用 fake 替换，避免真跑容器）。
+var startWithFn = runtime.StartWith
+
 // Run 是 shim 主循环：启动容器 → 写状态 → 按 restart 策略决定重启或退出。
 //
 // 停止语义（两条路径，与 doc.go 一致）：
@@ -78,7 +81,7 @@ func Run(ctx context.Context, o *Options) error {
 		env = append(env, runtime.ResolveNetEnv(st.Root, cfg.Network, cfg.ID, cfg.Hostname)...)
 		env = append(env, runtime.MountEnv(cfg.Mounts)...)
 		env = append(env, runtime.CgroupEnv(cfg.ID)...)
-		res, err := runtime.StartWith(&runtime.Config{
+		res, err := startWithFn(&runtime.Config{
 			Rootfs:   cfg.Rootfs,
 			Hostname: cfg.Hostname,
 			Cmd:      cfg.Cmd,
