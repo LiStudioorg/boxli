@@ -122,3 +122,20 @@ pkill -f 'boxli hub serve'
 
 本环境（非 root 沙箱）能验证 A/G 与代码层；B–F（veth、cgroup、fork、exec）
 需 root，请按本 runbook 在 root 真机执行。
+## v0.5.1 修复与回归（root 真机发现 6 bug）
+
+- 修复清单与根因见 `docs/audit-v0.5.1.md`（nft 语法、LinkByName NUL、veth
+  有界重试、shim 状态、stop/rm 信号与 netlink 超时）。
+- **root 真机回归步骤**（在 /root/boxli-test）：
+
+```bash
+cd /root/boxli-test && go build -o /tmp/boxli ../../home/li63050a/work/boxli 2>/dev/null || true
+boxli build -t demo:v1 .            # 期望「已构建并导入 demo:v1」
+boxli run -d --name demo --network boxli0 -p 8080:80 demo:v1
+boxli ps                            # 期望 Up 且能 grep 到容器进程（不再"Up 但无进程"）
+curl -s http://127.0.0.1:8080       # 返回 hello
+boxli exec -it demo /bin/sh         # 进入容器
+boxli stop demo                     # 快速返回（不再等 15s/挂起）；Ctrl+C 可中断
+boxli rm -f demo                    # 快速返回，Ctrl+C 可中断
+ip link | grep veth; nft list ruleset | grep 8080   # 清理后无残留
+```
