@@ -105,11 +105,22 @@ var (
 	sockFD   int
 	sockErr  error
 	sockMu   sync.Mutex
+
+	// socketOverride 测试注入：返回 (fd, err, 使用注入)。一次返回 ok=true 即优先
+	// 于真实套接字；返回 false 则回落到默认。仅测试设置，非并发安全。
+	socketOverride func() (int, error, bool)
 )
 
 // socket 返回常驻的 NETLINK_ROUTE 套接字。套接字不绑定到特定网络命名空间，
 // 每次请求时由调用方通过 Setns 决定当前线程所在的命名空间。
+// 测试可用 socketOverride 注入伪套接字（伪造 EAGAIN/EPERM 等，无需 root）。
 func socket() (int, error) {
+	if socketOverride != nil {
+		fd, err, ok := socketOverride()
+		if ok {
+			return fd, err
+		}
+	}
 	sockOnce.Do(func() {
 		fd, err := syscall.Socket(syscall.AF_NETLINK, syscall.SOCK_RAW|syscall.SOCK_CLOEXEC, syscall.NETLINK_ROUTE)
 		if err != nil {
@@ -226,6 +237,12 @@ func (r *req) do() ([]message, error) {
 	if err := syscall.Sendto(fd, r.buf, 0, &syscall.SockaddrNetlink{Family: syscall.AF_NETLINK}); err != nil {
 		return nil, fmt.Errorf("发送 rtnetlink 请求(type=%d): %w", msgTypeOf(r.buf), err)
 	}
+	return recvLoop(fd, r.seq, msgTypeOf(r.buf))
+}
+
+// recvLoop 从 netlink 套接字接收并解析 seq 匹配的应答，直到完成或出错。
+// 抽出以便错误注入测试（给非阻塞空 socket，得到 EAGAIN）无需 root。
+func recvLoop(fd int, seq uint32, msgType uint16) ([]message, error) {
 	var out []message
 	buf := make([]byte, 1<<16)
 	for {
@@ -239,11 +256,11 @@ func (r *req) do() ([]message, error) {
 				// 请求构造被内核丢弃（如 veth 嵌套属性错误），或命名空间状态
 				// 异常。返回明确错误，避免调用方误以为成功。
 				return nil, fmt.Errorf("rtnetlink %s 等待应答超时（内核未确认请求，可能请求构造错误或接口状态异常）: %w",
-					opName(msgTypeOf(r.buf)), err)
+					opName(msgType), err)
 			}
 			return nil, fmt.Errorf("接收 rtnetlink 响应: %w", err)
 		}
-		msgs, err := parseMessages(buf[:n], r.seq)
+		msgs, err := parseMessages(buf[:n], seq)
 		if err != nil {
 			return nil, err
 		}
@@ -256,10 +273,13 @@ func (r *req) do() ([]message, error) {
 				}
 				code := int32(getU32(m.Data[0:4]))
 				if code == 0 {
-					// ACK：请求成功。
-					continue
+					// ACK：命令已被内核接受并确认，作为本次请求的终止条件返回。
+					// （此前在此 continue 会导致对端只回单个 ACK 的命令——如
+					// AddAddr/NewLink/NewVeth——永远收不到终止信号，最终超时
+					// EAGAIN 而误判失败。）
+					return out, nil
 				}
-				return nil, &OpError{Op: opName(msgTypeOf(r.buf)), Errno: syscall.Errno(-code)}
+				return nil, &OpError{Op: opName(msgType), Errno: syscall.Errno(-code)}
 			case NLmsgDone:
 				done = true
 			case NLmsgNoop:
