@@ -170,6 +170,13 @@ func mountRootfsVolumes(rootfs string) error {
 		if err := syscall.Mount(m.Source, dst, "", flags, ""); err != nil {
 			return fmt.Errorf("挂载卷 %s → %s: %w", m.Source, m.Target, err)
 		}
+		// bind 之后必须先 bind 再 remount 才能应用只读：单个
+		// mount(MS_BIND|MS_RDONLY) 的 MS_RDONLY 会被内核忽略，bind 仍是可写。
+		if m.ReadOnly {
+			if err := syscall.Mount(dst, dst, "", uintptr(msBind|syscall.MS_REMOUNT|syscall.MS_RDONLY), ""); err != nil {
+				return fmt.Errorf("卷 %s 设为只读失败: %w", m.Target, err)
+			}
+		}
 	}
 	return nil
 }
