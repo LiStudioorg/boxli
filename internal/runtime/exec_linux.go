@@ -6,11 +6,9 @@
 package runtime
 
 import (
-	"errors"
 	"fmt"
 	"github.com/LiStudioorg/boxli/internal/execns"
 	"os"
-	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -120,78 +118,6 @@ func applyExecUser(user string) error {
 	return nil
 }
 
-// execExitCode 统一退出码：正常退出原样；信号死亡 128+signum。
-func execExitCode(ws syscall.WaitStatus) int {
-	if ws.Exited() {
-		return ws.ExitStatus()
-	}
-	if ws.Signaled() {
-		return 128 + int(ws.Signal())
-	}
-	return 1
-}
-
-// nsErr 包装一次 setns 命名空间错误；权限不足时给出 Android-有 Root 的指引。
-func nsErr(name string, err error) error {
-	if errors.Is(err, syscall.EPERM) || errors.Is(err, syscall.EACCES) {
-		return fmt.Errorf("setns %s：namespace 创建失败，权限不足。Android 需 Root，无 Root 环境官方不支持: %w", name, err)
-	}
-	return fmt.Errorf("setns %s: %w", name, err)
-}
-
-// nsFlags 命名空间标记位（syscall 包未导出 CLONE_NEWNET）。
-func nsFlags(name string) int {
-	switch name {
-	case "mnt":
-		return syscall.CLONE_NEWNS
-	case "uts":
-		return syscall.CLONE_NEWUTS
-	case "ipc":
-		return syscall.CLONE_NEWIPC
-	case "net":
-		return cloneNewNet
-	}
-	return 0
-}
-
-// setns 封装内核 setns 系统调用。
-func setns(fd int, nstype int) error {
-	num := setnsSyscallNr()
-	if num == 0 {
-		return fmt.Errorf("setns 在当前架构 %s 不支持", runtime.GOARCH)
-	}
-	_, _, errno := syscall.Syscall(num, uintptr(fd), uintptr(nstype), 0)
-	if errno == syscall.EINVAL && nstype == cloneNewNet {
-		// 部分内核要求 nstype=0 进入 netns。
-		_, _, errno = syscall.Syscall(num, uintptr(fd), 0, 0)
-	}
-	if errno != 0 {
-		return errno
-	}
-	return nil
-}
-
-// setnsSyscallNr 返回当前架构的 setns 系统调用号。
-func setnsSyscallNr() uintptr {
-	switch runtime.GOARCH {
-	case "amd64":
-		return 308
-	case "arm64", "riscv64":
-		return 268
-	case "386":
-		return 346
-	case "arm":
-		return 375
-	case "ppc64", "ppc64le":
-		return 350
-	case "s390x":
-		return 339
-	case "loong64":
-		return 437
-	}
-	return 0
-}
-
 // openpty 分配一个伪终端，返回 master/slave。从 /dev/ptmx 创建。
 func openpty() (master, slave *os.File, err error) {
 	m, err := os.OpenFile("/dev/ptmx", os.O_RDWR, 0)
@@ -244,13 +170,3 @@ func relayLoop(master *os.File) {
 		}
 	}()
 }
-
-// closeNSFds 关闭全部打开的命名空间 fd。
-func closeNSFds(m map[string]int) {
-	for _, fd := range m {
-		_ = syscall.Close(fd)
-	}
-}
-
-// 命名空间常量（syscall 未导出）。
-const cloneNewNet = 0x40000000
