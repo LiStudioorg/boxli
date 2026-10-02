@@ -65,6 +65,7 @@ const (
 	IFLA_NET_NS_FD  = 28
 
 	IFLA_INFO_KIND = 1
+	IFLA_INFO_DATA = 2 // IFLA_LINKINFO 内的数据（与 IFA_* 数值重叠但属不同命名空间）
 
 	// 地址属性。
 	IFA_ADDRESS = 1
@@ -87,6 +88,9 @@ const (
 	// 链路类型标记（ifi_type）。
 	ARPHRD_ETHER    = 1
 	ARPHRD_LOOPBACK = 772
+
+	// veth 私有属性（IFLA_INFO_DATA 内）。
+	VETH_INFO_PEER = 1
 
 	// 命名空间类型（setns）。
 	CLONE_NEWNET = 0x40000000
@@ -229,6 +233,13 @@ func (r *req) do() ([]message, error) {
 		if err != nil {
 			if errors.Is(err, syscall.EINTR) {
 				continue
+			}
+			if errors.Is(err, syscall.EAGAIN) || errors.Is(err, syscall.EWOULDBLOCK) {
+				// SO_RCVTIMEO 到期，内核未在窗口内回 ACK/响应。这通常是
+				// 请求构造被内核丢弃（如 veth 嵌套属性错误），或命名空间状态
+				// 异常。返回明确错误，避免调用方误以为成功。
+				return nil, fmt.Errorf("rtnetlink %s 等待应答超时（内核未确认请求，可能请求构造错误或接口状态异常）: %w",
+					opName(msgTypeOf(r.buf)), err)
 			}
 			return nil, fmt.Errorf("接收 rtnetlink 响应: %w", err)
 		}

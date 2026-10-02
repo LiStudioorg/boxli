@@ -61,17 +61,31 @@ func NewLink(name, kind string, optsExtra ...Attr) error {
 
 // NewVeth 创建一对 veth：name + peer。
 func NewVeth(name, peer string) error {
-	peerHdr := append(ifInfoMsg(), cstr(peer)...)
+	r := buildVethReq(name, peer)
+	_, err := r.do()
+	return err
+}
+
+// buildVethReq 构造 veth 对创建的 rtnetlink 请求。
+//
+// 内核 veth_newlink 用 nla_parse_nested_deprecated 解析 VETH_INFO_PEER，
+// 其值 = struct ifinfomsg（16 字节零）+ 一个 IFLA_IFNAME 属性存 peer 名。
+// 旧实现把 peer 名拼成裸字符串（ifinfomsg + 缓冲），内核无法解析该属性、
+// 丢弃请求并不回 ACK，导致 Recvfrom 收到 EAGAIN（"resource temporarily
+// unavailable"）。
+func buildVethReq(name, peer string) *req {
+	// VETH_INFO_PEER 值：ifinfomsg + 内层 IFLA_IFNAME 属性（peer 名）。
+	peerBody := nestedAttrs([]Attr{{Type: IFLA_IFNAME, Data: cstr(peer)}})
+	peerBuf := append(ifInfoMsg(), peerBody...)
 	r := newReq(RTM_NEWLINK, NLM_F_CREATE|NLM_F_EXCL, ifInfoMsg())
 	r.addAttrString(IFLA_IFNAME, name)
 	r.addAttr(IFLA_LINKINFO, nestedAttrs([]Attr{
 		{Type: IFLA_INFO_KIND, Data: cstr(KindVeth)},
-		{Type: 2, Data: nestedAttrs([]Attr{ // IFLA_INFO_DATA=2
-			{Type: 1, Data: peerHdr}, // VETH_INFO_PEER=1
+		{Type: IFLA_INFO_DATA, Data: nestedAttrs([]Attr{
+			{Type: VETH_INFO_PEER, Data: peerBuf},
 		})},
 	}))
-	_, err := r.do()
-	return err
+	return r
 }
 
 // DelLink 按名字删除链路。
