@@ -119,6 +119,14 @@ func socket() (int, error) {
 			sockErr = fmt.Errorf("绑定 rtnetlink 套接字: %w", err)
 			return
 		}
+		// 接收超时：若内核因命名空间/状态异常不回应，避免 Recvfrom 永久阻塞
+		// 卡死调用方（曾表现为 stop/rm/netlink 一连串操作挂起、Ctrl+C 无效）。
+		tv := syscall.Timeval{Sec: 5}
+		if err := syscall.SetsockoptTimeval(fd, syscall.SOL_SOCKET, syscall.SO_RCVTIMEO, &tv); err != nil {
+			_ = syscall.Close(fd)
+			sockErr = fmt.Errorf("设置 rtnetlink 接收超时: %w", err)
+			return
+		}
 		sockFD = fd
 	})
 	return sockFD, sockErr

@@ -4,6 +4,7 @@
 package engine
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -36,7 +37,7 @@ const DefaultStopTimeout = shim.GraceHold + 5*time.Second
 // stopPollInterval 是等待 shim 退出时的轮询间隔（容器数量级小，轮询足够）。
 const stopPollInterval = 100 * time.Millisecond
 
-// Stop 停止一个容器。语义（AGENTS.md《停止容器时的状态记录》）：
+// Stop 停止一个容器（用 background ctx 调用 StopWithContext）。
 //  1. 先写 stopped-by-user 标记——即便容器已停止也写，保证 unless-stopped
 //     容器下次开机不被拉起（用户意图优先于当前运行状态）；
 //  2. 若 shim 存活则 SIGTERM（shim 会把 SIGTERM 转发给容器 init 并自行退出）；
@@ -44,6 +45,12 @@ const stopPollInterval = 100 * time.Millisecond
 //
 // 已停止的容器不算错误（幂等）：只写标记并返回 WasRunning=false。
 func Stop(st *store.Store, idOrName string, timeout time.Duration) (*StopResult, error) {
+	return StopWithContext(context.Background(), st, idOrName, timeout)
+}
+
+// StopWithContext 是 Stop 的 ctx 可取消形态：ctx 取消时尽快返回
+// ctx.Err()，供 stop/rm 支持 Ctrl+C，避免在 shim/netlink 卡住时永久挂起。
+func StopWithContext(ctx context.Context, st *store.Store, idOrName string, timeout time.Duration) (*StopResult, error) {
 	if timeout <= 0 {
 		timeout = DefaultStopTimeout
 	}
@@ -86,6 +93,10 @@ func Stop(st *store.Store, idOrName string, timeout time.Duration) (*StopResult,
 	// 2. 等 shim 退出：正常的 shim 会在容器 init 收尾后写状态并退出。
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
+		if ctx.Err() != nil {
+			res.Waited = time.Since(start)
+			return res, ctx.Err()
+		}
 		if !boot.PidAlive(shimPID) {
 			break
 		}
@@ -93,7 +104,12 @@ func Stop(st *store.Store, idOrName string, timeout time.Duration) (*StopResult,
 		if rerr == nil && !stt.Running {
 			break
 		}
-		time.Sleep(stopPollInterval)
+		select {
+		case <-ctx.Done():
+			res.Waited = time.Since(start)
+			return res, ctx.Err()
+		case <-time.After(stopPollInterval):
+		}
 	}
 	res.Waited = time.Since(start)
 

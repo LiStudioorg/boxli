@@ -4,6 +4,7 @@
 package engine
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -31,6 +32,11 @@ type RemoveResult struct {
 // 只删除 <root>/containers/<id>/ 整目录（配置、运行状态、日志、该容器独占的
 // rootfs）；共享的镜像层缓存 layers/sha256/<hex> 不动，其他容器继续复用。
 func Remove(st *store.Store, idOrName string, force bool) (*RemoveResult, error) {
+	return RemoveWithContext(context.Background(), st, idOrName, force)
+}
+
+// RemoveWithContext 是 Remove 的 ctx 可取消形态（Ctrl+C 可中断 stop 等待）。
+func RemoveWithContext(ctx context.Context, st *store.Store, idOrName string, force bool) (*RemoveResult, error) {
 	cfg, err := st.FindContainer(idOrName)
 	if err != nil {
 		return nil, err
@@ -46,7 +52,7 @@ func Remove(st *store.Store, idOrName string, force bool) (*RemoveResult, error)
 			return res, fmt.Errorf("容器 %s（%s）正在运行，请先 boxli stop %s（或加 -f 强制删除）: %w",
 				cfg.Name, cfg.ID, cfg.Name, ErrContainerRunning)
 		}
-		if _, err := Stop(st, cfg.ID, 0); err != nil {
+		if _, err := StopWithContext(ctx, st, cfg.ID, 0); err != nil {
 			return res, fmt.Errorf("强制删除前停止容器失败: %w", err)
 		}
 		res.Stopped = true

@@ -28,14 +28,19 @@ func newRmCommand(out io.Writer) *cobra.Command {
 			"运行中的容器会拒绝删除并提示先 boxli stop；-f 可强制删除（先停止再删除）。",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			defer cleanupCmdContext(cmd)
+			sigCtx(cmd)
 			st, err := store.Open(dataDir)
 			if err != nil {
 				return err
 			}
 			var failed int
 			for _, target := range args {
-				res, err := engine.Remove(st, target, force)
+				res, err := engine.RemoveWithContext(cmd.Context(), st, target, force)
 				if err != nil {
+					if cmd.Context().Err() != nil {
+						return fmt.Errorf("rm 已取消")
+					}
 					// 多个目标时逐个报错，全部处理完再以非零码收敛。
 					fmt.Fprintf(cmd.ErrOrStderr(), "boxli rm: %v\n", err)
 					failed++

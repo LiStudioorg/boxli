@@ -25,12 +25,16 @@ func newStopCommand(out io.Writer) *cobra.Command {
 		Short: "停止容器（标记 stopped-by-user，unless-stopped 下次开机不再拉起）",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			defer cleanupCmdContext(cmd)
 			st, err := store.Open(dataDir)
 			if err != nil {
 				return err
 			}
-			res, err := engine.Stop(st, args[0], timeout)
+			res, err := engine.StopWithContext(sigCtx(cmd), st, args[0], timeout)
 			if err != nil {
+				if cmd.Context().Err() != nil {
+					return fmt.Errorf("stop 已取消")
+				}
 				return err
 			}
 			switch {
