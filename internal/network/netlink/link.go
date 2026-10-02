@@ -243,15 +243,10 @@ func DelAddr(ifname, ip string, prefix int) error {
 
 // AddRoute 添加一条 IPv4 路由。dst 为空表示默认路由。
 func AddRoute(dst string, prefix int, via string, ifname string) error {
-	b := make([]byte, 12)
-	b[0] = syscall.AF_INET
 	if dst == "" {
 		prefix = 0
 	}
-	b[1] = byte(prefix)
-	binary.LittleEndian.PutUint32(b[4:8], RT_TABLE_MAIN)
-	binary.LittleEndian.PutUint32(b[8:12], RTN_UNICAST)
-	r := newReq(RTM_NEWROUTE, NLM_F_CREATE|NLM_F_EXCL, b)
+	r := newReq(RTM_NEWROUTE, NLM_F_CREATE|NLM_F_EXCL, buildRouteMsg(prefix))
 	if dst != "" {
 		r.addAttr(RTA_DST, netIP4(dst))
 	}
@@ -269,15 +264,10 @@ func AddRoute(dst string, prefix int, via string, ifname string) error {
 
 // DelRoute 删除一条 IPv4 路由。
 func DelRoute(dst string, prefix int, via string, ifname string) error {
-	b := make([]byte, 12)
-	b[0] = syscall.AF_INET
 	if dst == "" {
 		prefix = 0
 	}
-	b[1] = byte(prefix)
-	binary.LittleEndian.PutUint32(b[4:8], RT_TABLE_MAIN)
-	binary.LittleEndian.PutUint32(b[8:12], RTN_UNICAST)
-	r := newReq(RTM_DELROUTE, 0, b)
+	r := newReq(RTM_DELROUTE, 0, buildRouteMsg(prefix))
 	if dst != "" {
 		r.addAttr(RTA_DST, netIP4(dst))
 	}
@@ -291,6 +281,23 @@ func DelRoute(dst string, prefix int, via string, ifname string) error {
 	}
 	_, err := r.do()
 	return err
+}
+
+// buildRouteMsg 构造 struct rtmsg（12 字节）的完整字节。
+//
+// 布局：family[0] dst_len[1] src_len[2] tos[3] table[4] protocol[5]
+// scope[6] type[7] flags[8:12]。此前用 putU32(b[4:8], RT_TABLE_MAIN) 把
+// rtm_type(byte7) 盖成 0(RTN_UNSPEC)、并把 RTN_UNICAST 错写到 rtm_flags，
+// 内核拒收 → add-route 报 invalid argument。
+func buildRouteMsg(prefix int) []byte {
+	b := make([]byte, 12)
+	b[0] = syscall.AF_INET
+	b[1] = byte(prefix) // rtm_dst_len，默认路由为 0
+	b[4] = byte(RT_TABLE_MAIN)
+	b[5] = byte(RTPROT_BOOT)
+	b[6] = byte(RT_SCOPE_UNIVERSE)
+	b[7] = byte(RTN_UNICAST)
+	return b
 }
 
 // ---- 辅助 ----

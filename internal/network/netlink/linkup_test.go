@@ -86,3 +86,29 @@ func TestSetLinkMasterReqTargetsSlave(t *testing.T) {
 		t.Fatalf("IFLA_MASTER=%d 期望 master=20", got)
 	}
 }
+
+// TestBuildRouteMsgLayout 回归：struct rtmsg 字节要正确——rtm_type(byte7)=
+// RTN_UNICAST、rtm_table(byte4)=main、flags(8:12)=0。此前 type 被盖成 0、
+// UNICAST 错写进 flags → add-route 报 invalid argument。
+func TestBuildRouteMsgLayout(t *testing.T) {
+	b := buildRouteMsg(0) // 默认路由
+	if b[0] != uint8(syscall.AF_INET) {
+		t.Fatalf("family=%d 期望 AF_INET", b[0])
+	}
+	if b[1] != 0 {
+		t.Fatalf("默认路由 dst_len=%d 期望 0", b[1])
+	}
+	if b[4] != RT_TABLE_MAIN {
+		t.Fatalf("table=%d 期望 %d", b[4], RT_TABLE_MAIN)
+	}
+	if b[7] != RTN_UNICAST {
+		t.Fatalf("type=%d 期望 RTN_UNICAST=%d（此前为 0 导致 EINVAL）", b[7], RTN_UNICAST)
+	}
+	if b[8]|b[9]|b[10]|b[11] != 0 {
+		t.Fatalf("flags 应全 0，实得 %d %d %d %d", b[8], b[9], b[10], b[11])
+	}
+	// 显式前缀的路由：dst_len 应等于前缀。
+	if b2 := buildRouteMsg(16); b2[1] != 16 {
+		t.Fatalf("dst_len(16) 时=%d", b2[1])
+	}
+}
