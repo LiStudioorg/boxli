@@ -176,47 +176,33 @@ func (c *Cgroup) writeIONodeThrottle(l *Limits) error {
 	return nil
 }
 
-// writeNetworkBandwidth 通过 tc 层流量控制把出向带宽限制在容器 veth 上。
-// 简化：先用内核 net_cls 记标记（v2 无 net_cls，退化提示）。
+// writeNetworkBandwidth 限制容器出向带宽。需要 tc/HTB 在容器 veth 上做
+// 面共享整棵树的编排，本环境不提供该基础设施，显式报错而不静默忽略。
 func (c *Cgroup) writeNetworkBandwidth(bps int64) error {
-	_ = bps
-	return nil // tc/HTB 实现在 engine + network 协作；此处预留
+	if bps <= 0 {
+		return nil
+	}
+	return fmt.Errorf("--network-bandwidth 需要 tc 流量整形，当前未实现: %w", ErrUnsupported)
 }
 
-// writeStorageAndDevices 写存储配额（XFS project quota 元数据）与设备白名单。
+// writeStorageAndDevices 写存储配额与设备白名单。存储配额需 XFS project
+// quota；GPU/NPU 需 cgroup eBPF 设备控制。两者当前未实现，请求时显式报错。
 func (c *Cgroup) writeStorageAndDevices(l *Limits) error {
-	if len(l.GPU) > 0 || len(l.NPU) > 0 {
-		if err := c.writeDevices(l.GPU, l.NPU); err != nil {
-			return err
-		}
-	}
 	if l.Storage > 0 {
-		// 存储配额落地于卷层（internal/storage），此处仅记录；XFS prjquota
-		// 由存储模块处理。
+		return fmt.Errorf("--storage 存储配额需 XFS project quota，当前未实现: %w", ErrUnsupported)
+	}
+	if len(l.GPU) > 0 || len(l.NPU) > 0 {
+		return fmt.Errorf("--gpu/--npu 设备直通需 cgroup eBPF 设备控制，当前未实现: %w", ErrUnsupported)
 	}
 	return nil
 }
 
-// writeDevices 写 cgroup v2 devices（cgroup 控制器列表里 devices.close 变体）。
+// writeDevices 旧接口：GPU/NPU 直通能力已拆分到 writeStorageAndDevices，
+// 此处不再接收（调用方不会传 requests）。
 func (c *Cgroup) writeDevices(gpus, npus []DeviceRequest) error {
-	// v2 默认不允许设备访问；需在 eBPF(cgroup) 打开前先允许。这里做最小实现：
-	// 把请求的设备/路径白名单写入 cgroup.children 的子 cgroup 控制。
-	// 完整 eBPF program 注入超出本包范围，此处登记设备并提示需要 root。
-	var entries []string
-	collect := func(reqs []DeviceRequest) {
-		for _, r := range reqs {
-			for _, d := range r.Devices {
-				entries = append(entries, fmt.Sprintf("%d %d", d.Major, d.Minor))
-			}
-		}
-	}
-	collect(gpus)
-	collect(npus)
-	// 记录到组内 .devices（未来由 eBPF 加载器消费）。
-	if len(entries) > 0 {
-		_ = c.write("cgroup.devices", "a "+strings.Join(entries, ","))
-	}
-	return nil
+	_ = gpus
+	_ = npus
+	return fmt.Errorf("设备直通未实现: %w", ErrUnsupported)
 }
 
 // Remove 删除容器 cgroup。

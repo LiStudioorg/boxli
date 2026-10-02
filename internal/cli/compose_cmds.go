@@ -8,12 +8,15 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/LiStudioorg/boxli/internal/build"
 	"github.com/LiStudioorg/boxli/internal/compose"
 	"github.com/LiStudioorg/boxli/internal/engine"
 	"github.com/LiStudioorg/boxli/internal/store"
@@ -101,29 +104,31 @@ func (cc *composeCmd) up(out io.Writer) *cobra.Command {
 			for _, a := range args {
 				want[a] = true
 			}
+			// 先保证镜像可用（build/boxfile 服务就地构建并导入）。
 			for _, s := range services {
 				if len(want) > 0 && !want[s.Name] {
 					continue
 				}
 				if s.Image == "" {
-					fmt.Fprintf(out, "服务 %s：源为 %s，需先构建再 up（本分支输出编排计划）\n", s.Name, srcOf(s))
-					continue
+					if err := cc.buildService(out, cmd, st, p, s); err != nil {
+						return err
+					}
 				}
-				name, version := splitComposeRef(s.Image)
-				ok, err := st.Exists(name, version)
-				if err != nil || !ok {
-					fmt.Fprintf(out, "服务 %s：镜像 %s 未导入，请先 pull\n", s.Name, s.Image)
-					continue
-				}
-				// 计划确认；实际启动由 runtime 编排（见交接摘要）。
-				fmt.Fprintf(out, "服务 %s → %s（镜像 %s 已就绪，容器名前缀 %s%s）\n",
-					s.Name, s.Image, s.Image, cc.projectPrefix(p), s.Name)
 			}
-			_ = detach
+			// 依服务声明顺序启动（depends_on 的依赖先由用户保证已 up）。
+			for _, s := range services {
+				if len(want) > 0 && !want[s.Name] {
+					continue
+				}
+				if err := cc.startService(cmd, st, p, s, detach); err != nil {
+					return fmt.Errorf("compose up 服务 %s: %w", s.Name, err)
+				}
+				fmt.Fprintf(out, "服务 %s 已启动\n", s.Name)
+			}
 			return nil
 		},
 	}
-	c.Flags().BoolVarP(&detach, "detach", "d", false, "后台运行（占位：计划确认）")
+	c.Flags().BoolVarP(&detach, "detach", "d", false, "后台运行（缺省前台持有）")
 	return c
 }
 
@@ -200,22 +205,187 @@ func (cc *composeCmd) logs(out io.Writer) *cobra.Command {
 	}
 }
 
+// forEachProjectContainer 对匹配项目前缀的容器执行 fn。
+
+// scale 设置服务副本数：目标多于当前则增启，少于当前则停止多余的。
 func (cc *composeCmd) scale(out io.Writer) *cobra.Command {
-	return &cobra.Command{
-		Use:   "scale SERVICE=N",
-		Short: "设置服务副本数（占位：输出目标副本数）",
+	c := &cobra.Command{
+		Use:   "scale SERVICE=N [SERVICE=N...]",
+		Short: "设置服务副本数",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			p, services, st, err := cc.load()
+			if err != nil {
+				return err
+			}
+			byName := map[string]*compose.ResolvedService{}
+			for _, s := range services {
+				byName[s.Name] = s
+			}
 			for _, a := range args {
-				svc, n, ok := strings.Cut(a, "=")
+				svcName, nStr, ok := strings.Cut(a, "=")
 				if !ok {
 					return fmt.Errorf("compose scale: %q 应为 SERVICE=N", a)
 				}
-				fmt.Fprintf(out, "服务 %s → %s 副本\n", svc, n)
+				n, err := strconv.Atoi(nStr)
+				if err != nil || n < 0 {
+					return fmt.Errorf("compose scale: %q 副本数非法", a)
+				}
+				svc, ok := byName[svcName]
+				if !ok {
+					return fmt.Errorf("compose scale: 未知服务 %q", svcName)
+				}
+				cur := cc.countService(st, p, svcName)
+				switch {
+				case n > cur:
+					diff := n - cur
+					for i := 0; i < diff; i++ {
+						if err := cc.startService(cmd, st, p, svc, true); err != nil {
+							return fmt.Errorf("scale %s 增启: %w", svcName, err)
+						}
+						fmt.Fprintf(out, "服务 %s 副本 %d → %d\n", svcName, cur+i, cur+i+1)
+					}
+				case n < cur:
+					for i := n; i < cur; i++ {
+						if err := cc.stopService(st, p, svcName, i); err != nil {
+							return fmt.Errorf("scale %s 缩容: %w", svcName, err)
+						}
+					}
+					fmt.Fprintf(out, "服务 %s 副本缩至 %d\n", svcName, n)
+				default:
+					fmt.Fprintf(out, "服务 %s 副本数已为 %d\n", svcName, n)
+				}
 			}
 			return nil
 		},
 	}
+	return c
+}
+
+// buildService 就地构建一个 source 为 boxfile/build 的服务并导入本地 store，
+// 把解析出的镜像引用写回 s.Image 供 startService 使用。
+func (cc *composeCmd) buildService(out io.Writer, cmd *cobra.Command, st *store.Store, p *compose.Project, s *compose.ResolvedService) error {
+	contextDir := s.Build
+	boxfile := s.Boxfile
+	if boxfile != "" {
+		contextDir = filepath.Dir(boxfile)
+	} else if contextDir != "" {
+		if bf := filepath.Join(contextDir, "Boxfile"); fileExists(bf) {
+			boxfile = bf
+		} else if bf := filepath.Join(contextDir, "boxfile"); fileExists(bf) {
+			boxfile = bf
+		} else {
+			return fmt.Errorf("compose up 服务 %s：构建上下文 %s 无 Boxfile", s.Name, contextDir)
+		}
+	}
+	if boxfile == "" {
+		return fmt.Errorf("compose up 服务 %s：未声明 image/boxfile/build", s.Name)
+	}
+	bf, err := build.ParseBoxfileFile(boxfile)
+	if err != nil {
+		return err
+	}
+	if err := build.CheckContext(contextDir); err != nil {
+		return fmt.Errorf("compose up 服务 %s：构建上下文: %w", s.Name, err)
+	}
+	basePath := ""
+	if bf.From != "" && !strings.EqualFold(bf.From, "scratch") {
+		basePath, err = resolveBuildBase(st, bf.From)
+		if err != nil {
+			return err
+		}
+	}
+	tag := composeServiceImageRef(p, s.Name)
+	outTmp, err := os.CreateTemp("", "boxli-compose-build-*.boxli")
+	if err != nil {
+		return err
+	}
+	outPath := outTmp.Name()
+	_ = outTmp.Close()
+	defer os.Remove(outPath)
+	name, version := splitBuildTag(tag)
+	res, err := build.Build(cmd.Context(), &build.Options{
+		Boxfile: bf, ContextDir: contextDir, BaseImage: basePath,
+		OutPath: outPath, Name: name, Version: version,
+	})
+	if err != nil {
+		return err
+	}
+	if _, err := ImportImage(st, res.Path, tag, true); err != nil {
+		return fmt.Errorf("compose up 导入服务 %s 产物: %w", s.Name, err)
+	}
+	s.Image = tag
+	fmt.Fprintf(out, "已构建服务 %s → %s\n", s.Name, tag)
+	return nil
+}
+
+// startService 用 engine.Run 创建并启动一个服务容器（容器名 <project>_<service>）。
+func (cc *composeCmd) startService(cmd *cobra.Command, st *store.Store, p *compose.Project, s *compose.ResolvedService, detach bool) error {
+	imageRef := s.Image
+	if imageRef == "" {
+		return fmt.Errorf("服务 %s 无可用镜像（先 build）", s.Name)
+	}
+	n, v := splitComposeRef(imageRef)
+	if ok, _ := st.Exists(n, v); !ok {
+		return fmt.Errorf("镜像 %s 未导入，请先 boxli pull", imageRef)
+	}
+	env := make([]string, 0, len(s.Environment))
+	for _, k := range sortedKeysC(s.Environment) {
+		env = append(env, k+"="+s.Environment[k])
+	}
+	spec := &engine.RunSpec{
+		ImageRef:   imageRef,
+		Name:       cc.projectPrefix(p) + s.Name,
+		Hostname:   s.Hostname,
+		Cmd:        s.Command,
+		Entrypoint: s.Entrypoint,
+		Env:        env,
+		Workdir:    s.WorkingDir,
+		User:       s.User,
+		Restart:    store.Restart(s.Restart),
+		Detach:     detach,
+		Ports:      s.Ports,
+		Volumes:    s.Volumes,
+	}
+	_, err := engine.Run(cmd.Context(), st, spec)
+	return err
+}
+
+// stopService 停止第 i 个副本（名字 <project>_<service>_<i>）。副本命名规则：
+// 首副本无序号，扩缩容的额外副本带序号。
+func (cc *composeCmd) stopService(st *store.Store, p *compose.Project, service string, idx int) error {
+	base := cc.projectPrefix(p) + service
+	names := []string{base}
+	if idx > 0 {
+		names = []string{fmt.Sprintf("%s_%d", base, idx)}
+	}
+	for _, name := range names {
+		c, err := st.FindContainer(name)
+		if err != nil {
+			continue
+		}
+		if _, err := engine.Stop(st, c.ID, 15*time.Second); err != nil {
+			return err
+		}
+		if _, err := engine.Remove(st, c.ID, true); err != nil {
+			return err
+		}
+		break
+	}
+	return nil
+}
+
+// countService 统计某服务当前运行的容器副本数。
+func (cc *composeCmd) countService(st *store.Store, p *compose.Project, service string) int {
+	prefix := cc.projectPrefix(p) + service
+	containers, _ := st.ListContainers()
+	count := 0
+	for _, c := range containers {
+		if c.Name == prefix || strings.HasPrefix(c.Name, prefix+"_") {
+			count++
+		}
+	}
+	return count
 }
 
 // forEachProjectContainer 对匹配项目前缀的容器执行 fn。
@@ -260,4 +430,26 @@ func orDashC(s string) string {
 		return "-"
 	}
 	return s
+}
+
+// composeServiceImageRef 为就地构建的服务派生镜像引用 <project>/<service>:latest
+// （镜像名不含下划线/空格等非法字符，service 名已由 compose 校验）。
+func composeServiceImageRef(p *compose.Project, service string) string {
+	return p.Name + "/" + service + ":latest"
+}
+
+// fileExists 报告路径存在且为常规文件。
+func fileExists(p string) bool {
+	fi, err := os.Stat(p)
+	return err == nil && !fi.IsDir()
+}
+
+// sortedKeysC 按字典序返回 map 的键切片。
+func sortedKeysC(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }

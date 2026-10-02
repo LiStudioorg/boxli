@@ -34,13 +34,15 @@ func newResourceInfo(out io.Writer) *cobra.Command {
 			fmt.Fprintln(out, "资源能力诊断:")
 			fmt.Fprintf(out, "  cgroups v2 可用:   %v (%s)\n", resource.Available(), resource.CgroupV2Mount)
 			fmt.Fprintf(out, "  boxli cgroup 组:   %s\n", resource.BoxliGroup)
-			fmt.Fprintln(out, "  CPU 限制:          --cpus/--cpu-shares/--cpuset-cpus")
-			fmt.Fprintln(out, "  内存限制:          --memory/--memory-swap/--memory-reservation")
-			fmt.Fprintln(out, "  进程限制:          --pids-limit")
-			fmt.Fprintln(out, "  IO 限制:           --blkio-weight/--device-read-bps 等")
-			fmt.Fprintln(out, "  存储配额:          --storage")
-			fmt.Fprintln(out, "  加速器直通:        --gpu / --npu")
-			fmt.Fprintln(out, "  网络带宽:          --network-bandwidth")
+			fmt.Fprintln(out, "  已实现的限制：")
+			fmt.Fprintln(out, "    CPU 限制:          --cpus/--cpu-shares/--cpuset-cpus")
+			fmt.Fprintln(out, "    内存限制:          --memory/--memory-swap/--memory-reservation")
+			fmt.Fprintln(out, "    进程限制:          --pids-limit")
+			fmt.Fprintln(out, "    IO 限制:           --blkio-weight/--device-read-bps 等")
+			fmt.Fprintln(out, "  未实现（继续传入会明确报错）：")
+			fmt.Fprintln(out, "    存储配额:          --storage")
+			fmt.Fprintln(out, "    加速器直通:        --gpu / --npu")
+			fmt.Fprintln(out, "    网络带宽:          --network-bandwidth")
 			return nil
 		},
 	}
@@ -49,9 +51,9 @@ func newResourceInfo(out io.Writer) *cobra.Command {
 // newUpdateCommand 实现 `boxli update`：动态调整已运行容器的资源限制。
 func newUpdateCommand(out io.Writer) *cobra.Command {
 	var dataDir string
-	var memoryMB, memorySwapMB, pidsLimit, blkioWeight, storageMB int
+	var memoryMB, memorySwapMB, pidsLimit, blkioWeight int
 	var cpus float64
-	var cpuset, networkBw string
+	var cpuset string
 	cmd := &cobra.Command{
 		Use:   "update CONTAINER",
 		Short: "动态调整容器的资源限制",
@@ -66,7 +68,7 @@ func newUpdateCommand(out io.Writer) *cobra.Command {
 				return err
 			}
 			lims, err := runLimits(memoryMB, memorySwapMB, 0, cpus, pidsLimit,
-				cpuset, blkioWeight, storageMB, networkBw, 0, 0)
+				cpuset, blkioWeight, 0, "", 0, 0)
 			if err != nil {
 				return err
 			}
@@ -87,6 +89,5 @@ func newUpdateCommand(out io.Writer) *cobra.Command {
 	cmd.Flags().StringVar(&cpuset, "cpuset-cpus", "", "允许 CPU 列表")
 	cmd.Flags().IntVar(&pidsLimit, "pids-limit", 0, "进程数上限（0=不变）")
 	cmd.Flags().IntVar(&blkioWeight, "blkio-weight", 0, "块设备权重 [10,1000]")
-	cmd.Flags().StringVar(&networkBw, "network-bandwidth", "", "出向带宽上限")
 	return cmd
 }

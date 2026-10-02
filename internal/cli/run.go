@@ -321,9 +321,23 @@ func atoi(s string) int {
 }
 
 // runLimits 把 run 的 CLI 资源参数翻译成 resource.Limits。
+// 未实现的资源能力（存储配额、GPU/NPU 直通、网络带宽）在此显式拒绝，
+// 不允许"参数接受但运行时假装生效"。
 func runLimits(memoryMB, memorySwapMB, memoryResMB int, cpus float64, pidsLimit int,
 	cpuset string, blkioWeight, storageMB int, networkBw string, gpu, npu int,
 ) (*resource.Limits, error) {
+	if storageMB > 0 {
+		return nil, fmt.Errorf("run: --storage 存储配额尚未实现（需 XFS project quota）")
+	}
+	if networkBw != "" {
+		return nil, fmt.Errorf("run: --network-bandwidth 尚未实现（需 tc 流量整形）")
+	}
+	if gpu > 0 {
+		return nil, fmt.Errorf("run: --gpu 设备直通尚未实现（需 cgroup eBPF 设备控制）")
+	}
+	if npu > 0 {
+		return nil, fmt.Errorf("run: --npu 设备直通尚未实现（需 cgroup eBPF 设备控制）")
+	}
 	l := &resource.Limits{}
 	mb := func(v int) int64 { return int64(v) * 1024 * 1024 }
 	if memoryMB > 0 {
@@ -345,22 +359,6 @@ func runLimits(memoryMB, memorySwapMB, memoryResMB int, cpus float64, pidsLimit 
 	}
 	if blkioWeight > 0 {
 		l.BlkioWeight = int64(blkioWeight)
-	}
-	if storageMB > 0 {
-		l.Storage = mb(storageMB)
-	}
-	if networkBw != "" {
-		v, err := resource.ParseBandwidth(networkBw)
-		if err != nil {
-			return nil, fmt.Errorf("run: %w", err)
-		}
-		l.NetworkBandwidth = v
-	}
-	if gpu > 0 {
-		l.GPU = []resource.DeviceRequest{{Kind: "gpu", Count: gpu}}
-	}
-	if npu > 0 {
-		l.NPU = []resource.DeviceRequest{{Kind: "npu", Count: npu}}
 	}
 	return l, nil
 }
