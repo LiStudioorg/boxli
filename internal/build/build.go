@@ -45,7 +45,9 @@ const (
 	defDirMode  = 0o755
 	defFileMode = 0o644
 	// maxBuildLayerBytes 是追加层解压前的体积上限，防御解压炸弹。
-	maxBuildLayerBytes = 1 << 32
+	// 显式标注 int64：4 GiB 超出 32 位平台（linux/386、linux/arm）的 int 范围，
+	// 无类型常量会在这些平台编译失败。比较对象 fi.Size() 本就是 int64。
+	maxBuildLayerBytes int64 = 1 << 32
 )
 
 // Options 是一次构建的全部输入。
