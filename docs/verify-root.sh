@@ -168,6 +168,19 @@ else
   echo "  --- container.log ---"; cat "$BOXLI_HOME/containers/$(cid_of demo)/container.log" 2>/dev/null || true
 fi
 
+# 稳定性复查：等 3 秒再看是否仍 Up。若翻成 Exited，说明 init 起来后又退出
+#（如 /server 未起来→ 端口空、exec 目标已死）。
+sleep 3
+echo "  -- 3 秒后复查 --"
+"$BOXLI_BIN" ps -a
+if is_up demo; then
+  pass "3 秒后仍 Up（init 存活）"
+else
+  fail "3 秒后已退出（init 起来后死亡）"
+  echo "  --- container.log ---"; cat "$BOXLI_HOME/containers/$(cid_of demo)/container.log" 2>/dev/null || true
+  echo "  --- 宿主进程 ---"; ps aux | grep -E "server|/proc/self" | grep -v grep | head
+fi
+
 step "验证容器进程真在运行"
 if is_up demo; then
   initpid=$(cid_of demo)
@@ -187,10 +200,17 @@ else
 fi
 
 step "验证端口 18080 返回 hello"
-sleep 1
 out=$(curl -s --max-time 5 http://127.0.0.1:18080/ 2>/dev/null || true)
 echo "  curl -> $out"
-if echo "$out" | grep -q 'hello'; then pass "curl 返回 hello"; else fail "curl 未返回 hello"; fi
+if echo "$out" | grep -q 'hello'; then
+  pass "curl 返回 hello"
+else
+  fail "curl 未返回 hello"
+  echo "  --- 容器是否仍 Up ---"; "$BOXLI_BIN" ps -a 2>/dev/null | grep -E '^ID|demo' || true
+  echo "  --- container.log ---"; cat "$BOXLI_HOME/containers/$(cid_of demo)/container.log" 2>/dev/null || true
+  echo "  --- boxli0/网桥 IP ---"; ip addr show boxli0 2>/dev/null | grep -E 'inet |state' || true
+  echo "  --- nft NAT 相关 ---"; nft list ruleset 2>/dev/null | grep -E '18080|dnat|boxli' | head -10 || true
+fi
 
 ############ D. 资源限制 ############
 step "D. 资源限制（--memory 256 --cpus 1）"
