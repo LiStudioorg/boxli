@@ -164,3 +164,14 @@ resolv.conf/hosts 前未建 /etc。这也连锁导致此前 curl 空、exec 的 
 
 **修复**：`writeDNSFiles`（拆出 `writeDNSFilesTo(root,..)`）先 `MkdirAll
 <root>/etc` 再写。单测在临时目录验证。commit `5a70737`
+
+### fix(network): prune stale endpoints whose container is gone (dead DNAT)
+
+**现象**：容器已 Up 且存活，但 curl 仍空。nft 里出现**两条** dport 18080 DNAT
+（172.18.0.3 与历史残留的 172.18.0.4）。`ApplyNAT` 为网络文件里**所有**还登记的
+端点都加 DNAT；孤儿端点指向已删除容器（死 IP），若其规则先匹配，会把到活容器的
+连接丢包。
+
+**修复**：新增 `Manager.PruneEndpoints(name, alive)`——删掉 store 中已不存在的
+容器的端点并 detach 其 veth；`wireNetworkBeforeStart` 在分配新容器 IP 前调用。
+测试覆盖。commit `53b3341`
