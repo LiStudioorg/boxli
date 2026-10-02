@@ -65,7 +65,8 @@ step "清理残留（旧容器 / cgroup / veth / NAT / hub / demo 文件）"
 "$BOXLI_BIN" rm -f demo demo2 demo3 2>/dev/null || true
 "$BOXLI_BIN" stop demo demo2 demo3 2>/dev/null || true
 # 输出容器名里的 demo 全停全删
-for c in $("$BOXLI_BIN" ps -a 2>/dev/null | awk 'NR>1{print $1}'); do
+containers=$("$BOXLI_BIN" ps -a 2>/dev/null | awk 'NR>1{print $1}') || true
+for c in $containers; do
   "$BOXLI_BIN" rm -f "$c" 2>/dev/null || true
 done
 # 删除 boxli cgroup 组
@@ -73,9 +74,10 @@ if [ -d /sys/fs/cgroup/boxli ]; then
   rmdir /sys/fs/cgroup/boxli/* 2>/dev/null || true
 fi
 rmdir /sys/fs/cgroup/boxli 2>/dev/null || true
-# 删除 boxli0 网桥与残留 veth
+# 删除 boxli0 网桥与残留 veth（grep 无匹配时退出 1，pipefail 下须兜底）
 ip link del boxli0 2>/dev/null || true
-ip link show 2>/dev/null | grep -oE 'veth[a-f0-9]{7}|vpe[a-f0-9]{7}' | sort -u | while read -r if; do
+leaked_veth=$(ip link show 2>/dev/null | grep -oE 'veth[a-f0-9]{7}|vpe[a-f0-9]{7}' | sort -u) || true
+for if in $leaked_veth; do
   ip link del "$if" 2>/dev/null || true
 done
 # 清空 nft boxli 表
