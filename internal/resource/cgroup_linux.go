@@ -29,13 +29,27 @@ func Available() bool {
 // 若不 enable，cgroup v2 子组写这些限制会 EPERM（此前 --memory/--cpus 静默落空）。
 const controllers = "cpu memory pids"
 
+// cgroupV2GroupRoot 是 v2 模式下 boxli 父组的所在根，测试可注入临时目录。
+// 生产恒为 CgroupV2Mount；与 cgroupV1Roots 一样只作为测试缝存在。
+var cgroupV2GroupRoot = CgroupV2Mount
+
 // enableControllers 在 boxli 父组的 cgroup.subtree_control 里启用容器限制所需
 // 的控制器（cpu/memory/pids）。已在更外层启用时追加挂到本组；幂等、容错。
+//
+// 必须先建出 boxli 父组：cgroup.subtree_control 只存在于已创建的子组里，
+// 若父组不存在（例如首次运行，或上一次 `boxli rm` / 验证脚本的清理把
+// /sys/fs/cgroup/boxli 删掉之后），写该文件会 ENOENT 并让整个资源限制
+// 静默失效。此前依赖 Setup 里 MkdirAll(c.Path) 的副作用顺带建父组，但那是
+// 在 enableControllers **之后**才执行的，属于顺序依赖的隐患。
 func enableControllers() error {
 	if !Available() {
 		return fmt.Errorf("cgroups v2 不可用: %w", ErrUnsupported)
 	}
-	path := filepath.Join(CgroupV2Mount, BoxliGroup, "cgroup.subtree_control")
+	group := filepath.Join(cgroupV2GroupRoot, BoxliGroup)
+	if err := os.MkdirAll(group, 0o755); err != nil {
+		return fmt.Errorf("创建 cgroup 父组 %s: %w", group, err)
+	}
+	path := filepath.Join(group, "cgroup.subtree_control")
 	want := controllers
 	existing := " " + strings.TrimSpace(readOr("", path)) + " "
 	// 只追加缺失的控制器，避免重复。

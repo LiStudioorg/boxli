@@ -6,6 +6,7 @@
 package resource
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -486,5 +487,68 @@ func TestV1ThenV2Preference(t *testing.T) {
 		}
 	} else if mode != ModeV1 {
 		t.Fatalf("无 v2 且 v1 可用时应选 v1, got %q", mode)
+	}
+}
+
+// withV2GroupRoot 把 v2 父组根指向临时目录（测试缝，生产恒为 CgroupV2Mount）。
+func withV2GroupRoot(t *testing.T, root string) {
+	t.Helper()
+	old := cgroupV2GroupRoot
+	cgroupV2GroupRoot = root
+	t.Cleanup(func() { cgroupV2GroupRoot = old })
+}
+
+// TestEnableControllersCreatesParentGroup 是回归测试：boxli 父组不存在时
+// enableControllers 必须先把它建出来，否则写 cgroup.subtree_control 会 ENOENT，
+// 导致所有资源限制静默失效。
+//
+// 该缺陷真实发生过：验证脚本的清理会删掉 /sys/fs/cgroup/boxli，此后再 run
+// 带 --memory/--cpus 的容器就写不进限制（memory.max/cpu.max 全部 missing），
+// 而此前一直"看起来正常"只是因为 boxli 目录在多次运行之间幸存。
+func TestEnableControllersCreatesParentGroup(t *testing.T) {
+	root := t.TempDir()
+	withV2GroupRoot(t, root)
+
+	// 造出 v2 的可用标记，并把控制器列表写进去。
+	if err := os.WriteFile(filepath.Join(root, "cgroup.controllers"), []byte("cpu memory pids\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	group := filepath.Join(root, BoxliGroup)
+	if _, err := os.Stat(group); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("前置条件：%s 不应存在", group)
+	}
+
+	if err := enableControllers(); err != nil {
+		t.Fatalf("enableControllers 应自动创建父组: %v", err)
+	}
+	fi, err := os.Stat(group)
+	if err != nil || !fi.IsDir() {
+		t.Fatalf("父组 %s 未被创建: %v", group, err)
+	}
+	got := readTestFile(t, filepath.Join(group, "cgroup.subtree_control"))
+	for _, c := range []string{"cpu", "memory", "pids"} {
+		if !strings.Contains(got, "+"+c) {
+			t.Errorf("subtree_control 缺少 +%s: %q", c, got)
+		}
+	}
+}
+
+// TestEnableControllersIdempotent 覆盖重复调用：已有父组与已启用的控制器
+// 不应重复追加，也不应报错。
+func TestEnableControllersIdempotent(t *testing.T) {
+	root := t.TempDir()
+	withV2GroupRoot(t, root)
+	if err := os.WriteFile(filepath.Join(root, "cgroup.controllers"), []byte("cpu memory pids\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 3 {
+		if err := enableControllers(); err != nil {
+			t.Fatalf("第 %d 次 enableControllers: %v", i+1, err)
+		}
+	}
+	got := readTestFile(t, filepath.Join(root, BoxliGroup, "cgroup.subtree_control"))
+	// 已启用后不应再写（内容保持首次写入的结果）。
+	if strings.Count(got, "+cpu") != 1 {
+		t.Errorf("+cpu 应恰好出现一次: %q", got)
 	}
 }
