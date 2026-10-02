@@ -55,7 +55,29 @@ func StartWith(cfg *Config, onChildStart func(pid int), opts *StartOptions) (*St
 	if err != nil {
 		return nil, fmt.Errorf("rootfs 绝对路径: %w", err)
 	}
-	rootless := cfg.Rootless || os.Geteuid() != 0
+
+	// namespace 规划：探测内核能力后决定实际使用的组合。
+	// 三种降级路径（root+无 userns / rootless / 无任何隔离）在此统一判定，
+	// 失败返回 ErrNoNamespaces / ErrNotRoot 而非裸 EPERM。
+	wantNet := false
+	if mode, _, _, _, _, _, _, ok := parseNetEnv(cfg.Env); ok && *mode != network.ModeHost {
+		wantNet = true
+	}
+	nsPlan, err := resolveNSPlan(wantNet)
+	if err != nil {
+		return nil, err
+	}
+	// cfg.Rootless 是调用方**强制**要求 userns；若内核不允许则明确报错，
+	// 不静默忽略（静默忽略会让 rootless 请求变成"以 root 跑"，是安全问题）。
+	if cfg.Rootless && !nsPlan.UseUserNamespace && os.Geteuid() == 0 {
+		probe := probeNamespaces()
+		if !probe.UserNSAllowed {
+			return nil, fmt.Errorf("%w：调用方要求 rootless（user namespace），"+
+				"但内核不允许创建 user namespace（%s 为 0 或 /proc/self/ns/user 缺失）",
+				ErrUnsupported, maxUserNS)
+		}
+	}
+	rootless := nsPlan.UseUserNamespace
 
 	env := append(os.Environ(),
 		envInitMarker+"=1",
@@ -79,19 +101,15 @@ func StartWith(cfg *Config, onChildStart func(pid int), opts *StartOptions) (*St
 	cmd.Stdout = firstNonNil(opts.Stdout, os.Stdout)
 	cmd.Stderr = firstNonNil(opts.Stderr, cmd.Stdout.(*os.File))
 
-	flags := uintptr(syscall.CLONE_NEWPID | syscall.CLONE_NEWNS | syscall.CLONE_NEWUTS | syscall.CLONE_NEWIPC)
-	// 网络装配：bridge/none 需要独立的网络命名空间；host 复用宿主网络栈。
-	if mode, _, _, _, _, _, _, ok := parseNetEnv(cfg.Env); ok && *mode != network.ModeHost {
-		flags |= syscall.CLONE_NEWNET
-	}
+	// namespace 位与 userns 决策统一来自 nsPlan（见 nsplan_linux.go）。
+	// 这里不再自行拼 CLONE_NEWNET，避免两处判断不一致。
+	flags := nsPlan.Flags
 	sys := &syscall.SysProcAttr{Cloneflags: flags}
 	if rootless {
 		sys.Cloneflags |= syscall.CLONE_NEWUSER
 		sys.UidMappings = []syscall.SysProcIDMap{{ContainerID: 0, HostID: os.Getuid(), Size: 1}}
 		sys.GidMappings = []syscall.SysProcIDMap{{ContainerID: 0, HostID: os.Getgid(), Size: 1}}
 		sys.GidMappingsEnableSetgroups = false
-	} else if os.Geteuid() != 0 {
-		return nil, ErrNotRoot
 	}
 	cmd.SysProcAttr = sys
 

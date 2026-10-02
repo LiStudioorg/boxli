@@ -288,6 +288,14 @@ echo "  demo3 id=$cid3"
 # cgroup.procs，把正常的启动时序误判成失败。
 for _ in $(seq 1 10); do is_up demo3 && break; sleep 1; done
 cgrp="/sys/fs/cgroup/boxli/$cid3"
+# 即便如此，"Up" 与 AddPID 之间仍有毫秒级窗口：Up 只说明 shim 已起来，
+# 而 cgroup.procs 由 init 子进程稍后写入。这里直接以**被测目标本身**为条件
+# 重试（最多 5s），避免把启动时序当成失败——同时也保留了真正的失败可见性：
+# 若 5s 后仍为空，那就是真的没写进去。
+for _ in $(seq 1 50); do
+  [ -s "$cgrp/cgroup.procs" ] && break
+  sleep 0.1
+done
 mem=$(cat "$cgrp/memory.max" 2>/dev/null || echo missing)
 cpu=$(cat "$cgrp/cpu.max" 2>/dev/null || echo missing)
 procs=$(cat "$cgrp/cgroup.procs" 2>/dev/null || echo missing)
