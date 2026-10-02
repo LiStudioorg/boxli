@@ -144,3 +144,13 @@ rtnetlink add-route: invalid argument`。
 rtm_scope=universe、rtm_type=unicast，flags 置 0。测试断言语义。
 
 commit `8ec16e9`
+
+### fix(netlink): AddAddr put prefix in ifa_flags, not ifa_prefixlen (ENETUNREACH)
+
+**现象**：AddRoute 修好后，AddRoute 改为报 `network is unreachable`。根因在
+AddAddr：把 prefix 写进 `struct ifaddrmsg` 的 `ifa_flags`（byte2）而非
+`ifa_prefixlen`（byte1），容器 veth 的 IP 变成 /0、无连本网段路由 → 随后的
+默认路由网关不可达。
+
+**修复**：`buildAddrMsg` 设 ifa_prefixlen=b1、flags=0、scope=universe。测试断言
+ifaddrmsg 字节布局。commit `6709883`
