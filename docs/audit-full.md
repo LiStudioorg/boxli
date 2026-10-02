@@ -154,3 +154,13 @@ AddAddr：把 prefix 写进 `struct ifaddrmsg` 的 `ifa_flags`（byte2）而非
 
 **修复**：`buildAddrMsg` 设 ifa_prefixlen=b1、flags=0、scope=universe。测试断言
 ifaddrmsg 字节布局。commit `6709883`
+
+### fix(network): create /etc before writing resolv.conf/hosts (scratch images)
+
+**现象**：网络路由/IP 修好后，init 报 `写 /etc/resolv.conf: no such file or
+directory` 退出(1)。demo 是 `FROM scratch`，没有 /etc；`ConfigurePeer` 写
+resolv.conf/hosts 前未建 /etc。这也连锁导致此前 curl 空、exec 的 setns 看到
+已死 init。
+
+**修复**：`writeDNSFiles`（拆出 `writeDNSFilesTo(root,..)`）先 `MkdirAll
+<root>/etc` 再写。单测在临时目录验证。commit `5a70737`
