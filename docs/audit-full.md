@@ -175,3 +175,15 @@ resolv.conf/hosts 前未建 /etc。这也连锁导致此前 curl 空、exec 的 
 **修复**：新增 `Manager.PruneEndpoints(name, alive)`——删掉 store 中已不存在的
 容器的端点并 detach 其 veth；`wireNetworkBeforeStart` 在分配新容器 IP 前调用。
 测试覆盖。commit `53b3341`
+
+### fix(network): avoid preset-subnet collision with existing host routes
+
+**现象**：容器 Up 存活、DNAT 单条、ip_forward=1，但 curl 仍空；live 探针显示
+`ip route get 172.18.0.2 → dev br-03c9198c2214`（一个 Docker 网桥也用了
+172.18.0.0/16），到容器流量进了 docker 的网桥 → No route to host。**根因是
+boxli0 硬编码 172.18.0.0/16 与宿主 Docker 网络同网段冲突**，不是包路径 bug。
+
+**修复**：`pickFreeSubnet` 优先 172.18.0.0/16；若 `/proc/net/route` 已被其他
+非 boxli 接口占用，则从 172.20..172.31.0.0/16 选首个空闲（网关 *.1）。
+`ensurePreset` 用它；verify-root.sh 清理时删旧网络定义使重新可选，
+直连 IP 探针不再硬编码 172.18。commit `c6c1fc6`
