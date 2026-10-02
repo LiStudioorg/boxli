@@ -286,6 +286,12 @@ func (p *parser) doFrom(l logicalLine, rest string) error {
 	if len(fields) != 1 {
 		return fmt.Errorf("FROM 需要且仅需要一个镜像引用，得到 %d 个: %w", len(fields), ErrBadInstruction)
 	}
+	// `scratch`（大小写不敏感）是空基础镜像的特殊标记。
+	if strings.EqualFold(fields[0], "scratch") {
+		p.bf.From = "scratch"
+		p.seenFrom = true
+		return nil
+	}
 	if err := checkImageRef(fields[0]); err != nil {
 		return fmt.Errorf("FROM: %w", err)
 	}

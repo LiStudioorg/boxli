@@ -69,6 +69,10 @@ type Options struct {
 	// Architecture / OS 覆盖产物的平台字段，留空取 runtime.GOARCH / runtime.GOOS。
 	Architecture string
 	OS           string
+	// Name / Version 覆盖写入 index.json 的镜像引用（对应 `boxli build -t name:version`）。
+	// 为空时退化为基础镜像引用或 OutPath 文件名派生（见 imageRefOf）。
+	Name    string
+	Version string
 	// Labels 是附加到 config.labels 的标签，与 Boxfile 的 LABEL 合并，
 	// 同名时以本字段为准。
 	Labels map[string]string
@@ -356,15 +360,25 @@ func buildWorkRoot(opts *Options) (string, error) {
 // imageRefOf 决定产物的 name:version：沿用基础镜像的引用，scratch 构建取
 // 输出文件名去掉 .boxli 后缀，再依次回退为 "scratch" / "latest"。
 func imageRefOf(opts *Options, base *baseImage) (string, string, error) {
-	name, version := "", ""
-	if base.loaded != nil {
-		name, version = base.loaded.Manifest.Name, base.loaded.Manifest.Version
-	} else {
-		stem := strings.TrimSuffix(filepath.Base(opts.OutPath), ".boxli")
-		if stem == "" || stem == "." || stem == string(filepath.Separator) {
-			stem = "scratch"
+	name, version := opts.Name, opts.Version
+	if name == "" {
+		if base.loaded != nil {
+			name, version = base.loaded.Manifest.Name, opts.Version
+			if version == "" {
+				version = base.loaded.Manifest.Version
+			}
+		} else {
+			stem := strings.TrimSuffix(filepath.Base(opts.OutPath), ".boxli")
+			if stem == "" || stem == "." || stem == string(filepath.Separator) {
+				stem = "scratch"
+			}
+			name, version = stem, opts.Version
+			if version == "" {
+				version = "latest"
+			}
 		}
-		name, version = stem, "latest"
+	} else if version == "" {
+		version = "latest"
 	}
 	if err := checkArtifactName(name); err != nil {
 		return "", "", err

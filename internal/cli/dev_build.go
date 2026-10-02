@@ -4,12 +4,14 @@
 package cli
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -17,50 +19,164 @@ import (
 
 	"github.com/LiStudioorg/boxli/internal/build"
 	"github.com/LiStudioorg/boxli/internal/dev"
+	"github.com/LiStudioorg/boxli/internal/store"
 )
 
-// newBuildCommand 实现 `boxli build`：解析 Boxfile 并输出构建计划。
-// 实际层打包/合并由 image 打包模块驱动，此处做解析 + 校验 + 规划。
+// newBuildCommand 实现 `boxli build`：解析 Boxfile → 真正调用 build.Build()
+// 构造 .boxli 镜像 → 自动 pull 导入本地 store。
+//
+//	boxli build -t demo:v1 .
+//	boxli build -f Boxfile -t demo:v1 --context .
 func newBuildCommand(out io.Writer) *cobra.Command {
-	var file string
+	var (
+		file       string
+		tag        string
+		contextDir string
+		dataDir    string
+		noCache    bool
+		slim       bool
+	)
 	cmd := &cobra.Command{
-		Use:   "build [--file Boxfile]",
-		Short: "解析 Boxfile 并输出构建计划",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		Use:   "build [--file Boxfile] [--tag NAME:VERSION] [context]",
+		Short: "根据 Boxfile 构建 .boxli 镜像并入本地 store",
+		Long: "解析 Boxfile（FROM/COPY/ENV/WORKDIR/ENTRYPOINT/CMD/EXPOSE/VOLUME/" +
+			"LABEL/USER/ARG），对基础镜像或 scratch 执行指令，构造一个 .boxli " +
+			"镜像并自动 boxli pull 导入本地 store。",
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// 构建上下文：缺省为参数默认 "."。
+			if contextDir == "" {
+				contextDir = "."
+				if len(args) == 1 {
+					contextDir = args[0]
+				}
+			}
+			// Boxfile 路径：--file 优先，其次 <context>/Boxfile|boxfile。
 			if file == "" {
-				if _, err := os.Stat("Boxfile"); err == nil {
-					file = "Boxfile"
-				} else if _, err := os.Stat("boxfile"); err == nil {
-					file = "boxfile"
-				} else {
+				cand := []string{"Boxfile", "boxfile"}
+				if contextDir != "." && contextDir != "" {
+					cand = []string{filepath.Join(contextDir, "Boxfile"), filepath.Join(contextDir, "boxfile")}
+				}
+				found := ""
+				for _, c := range cand {
+					if _, err := os.Stat(c); err == nil {
+						found = c
+						break
+					}
+				}
+				if found == "" {
 					return fmt.Errorf("build: 未找到 Boxfile，用 --file 指定")
 				}
+				file = found
 			}
 			bf, err := build.ParseBoxfileFile(file)
 			if err != nil {
 				return err
 			}
 			// 校验构建上下文可访问。
-			if err := build.CheckContext("."); err != nil {
-				fmt.Fprintf(out, "提示: 构建上下文检查: %v\n", err)
+			if err := build.CheckContext(contextDir); err != nil {
+				return fmt.Errorf("build: 构建上下文: %w", err)
 			}
-			fmt.Fprintf(out, "== Boxfile %s ==\n", file)
-			fmt.Fprintf(out, "FROM %s\n", bf.From)
-			for _, ins := range bf.Instructions {
-				var buf bytes.Buffer
-				buf.WriteString(ins.Op)
-				for _, a := range ins.Args {
-					buf.WriteString(" " + a)
+
+			st, err := store.Open(dataDir)
+			if err != nil {
+				return err
+			}
+
+			// 定位基础镜像：FROM scratch 或空 → scratch；否则须本地已导入。
+			basePath := ""
+			if bf.From != "" && !strings.EqualFold(bf.From, "scratch") {
+				basePath, err = resolveBuildBase(st, bf.From)
+				if err != nil {
+					return err
 				}
-				fmt.Fprintf(out, "  %d: %s\n", ins.Line, buf.String())
 			}
-			fmt.Fprintf(out, "== 构建计划已就绪（%d 条指令）==\n", len(bf.Instructions))
+
+			// 产出临时 .boxli（Build 内部用 base/OutPath 派生 name:version，
+			// 我们把 -t 传给它写出正确清单；导入由 ImportImage 决定落位 ref）。
+			outTmp, err := os.CreateTemp("", "boxli-build-*.boxli")
+			if err != nil {
+				return fmt.Errorf("build: 创建输出临时文件: %w", err)
+			}
+			outPath := outTmp.Name()
+			_ = outTmp.Close()
+			defer os.Remove(outPath)
+
+			if noCache {
+				// 无缓存语义：构建始终从基础镜像重建，不加可复用层。
+				slog.Debug("build: --no-cache 提示（Boxli 构建当前始终重打追加层）")
+			}
+			_ = slim
+
+			name, version := splitBuildTag(tag)
+			res, err := build.Build(cmd.Context(), &build.Options{
+				Boxfile:    bf,
+				ContextDir: contextDir,
+				BaseImage:  basePath,
+				OutPath:    outPath,
+				Name:       name,
+				Version:    version,
+			})
+			if err != nil {
+				return err
+			}
+
+			// 自动导入本地 store（等价 boxli pull）。
+			dstRef := tag
+			loaded, err := ImportImage(st, res.Path, dstRef, true /* 覆盖重构建同名 */)
+			if err != nil {
+				return fmt.Errorf("build: 导入产物失败: %w", err)
+			}
+			fmt.Fprintf(out, "已构建并导入 %s:%s（%s，%d 层，%.1f KiB）\n",
+				loaded.Manifest.Name, loaded.Manifest.Version, res.Path, res.LayerCount, float64(res.Bytes)/1024)
+			fmt.Fprintf(out, "落地目录：%s\n", st.ImageDir(loaded.Manifest.Name, loaded.Manifest.Version))
 			return nil
 		},
 	}
-	cmd.Flags().StringVarP(&file, "file", "f", "", "Boxfile 路径（默认 ./Boxfile 或 ./boxfile）")
+	cmd.Flags().StringVarP(&file, "file", "f", "", "Boxfile 路径（默认 <context>/Boxfile 或 ./Boxfile）")
+	cmd.Flags().StringVarP(&tag, "tag", "t", "", "镜像引用 NAME:VERSION（默认由 Boxfile FROM 或文件名派生）")
+	cmd.Flags().StringVarP(&contextDir, "context", "", ".", "构建上下文目录（COPY 源相对它解析）")
+	cmd.Flags().StringVar(&dataDir, "data-dir", "", "数据目录（默认 $BOXLI_HOME 或 ~/.boxli）")
+	cmd.Flags().BoolVar(&noCache, "no-cache", false, "禁用构建缓存（Boxli 始终从基础镜像重建）")
+	cmd.Flags().BoolVar(&slim, "slim", false, "构建精简镜像（当前与常规构建同）")
 	return cmd
+}
+
+// resolveBuildBase 把 FROM 引用解析为本地已导入镜像的 source.boxli 路径。
+func resolveBuildBase(st *store.Store, ref string) (string, error) {
+	name, version, ok := splitRefC(ref)
+	if !ok {
+		return "", fmt.Errorf("build: 基础镜像引用 %q 应为 NAME:VERSION（先 boxli pull）", ref)
+	}
+	exists, err := st.Exists(name, version)
+	if err != nil {
+		return "", err
+	}
+	if !exists {
+		return "", fmt.Errorf("build: 基础镜像 %s 未导入本地，请先 boxli pull %s.boxli", ref, name+"_"+version)
+	}
+	return filepath.Join(st.ImageDir(name, version), "source.boxli"), nil
+}
+
+// splitBuildTag 拆分 "name:version"；空返回 ("","")。
+func splitBuildTag(tag string) (string, string) {
+	if tag == "" {
+		return "", ""
+	}
+	i := strings.LastIndex(tag, ":")
+	if i <= 0 || i == len(tag)-1 {
+		return "", ""
+	}
+	return tag[:i], tag[i+1:]
+}
+
+// splitRefC 拆分 "name:version"。
+func splitRefC(ref string) (string, string, bool) {
+	i := strings.LastIndex(ref, ":")
+	if i <= 0 || i == len(ref)-1 {
+		return "", "", false
+	}
+	return ref[:i], ref[i+1:], true
 }
 
 // newDevCommand 实现 `boxli dev`：文件热重载。

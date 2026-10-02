@@ -791,3 +791,27 @@ func TestTarTreeIsDeterministic(t *testing.T) {
 		t.Errorf("摘要大小 %d 与磁盘 %d 不符", s1, len(raw1))
 	}
 }
+
+// TestImageRefOverride 验证 build.Options.Name/Version 覆盖写入 index.json。
+func TestImageRefOverride(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "f.txt"), "x\n", 0o644)
+	opts := baseOpts(t, dir, "FROM scratch\nCOPY f.txt /f.txt\n")
+	opts.OutPath = filepath.Join(dir, "whatever.boxli")
+	opts.Name = "myns/demo"
+	opts.Version = "v7"
+	res, err := Build(context.Background(), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Name != "myns/demo" || res.Version != "v7" {
+		t.Fatalf("结果引用错误: %s:%s", res.Name, res.Version)
+	}
+	loaded, err := image.OpenFile(res.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Manifest.Name != "myns/demo" || loaded.Manifest.Version != "v7" {
+		t.Fatalf("清单引用错误: %s:%s", loaded.Manifest.Name, loaded.Manifest.Version)
+	}
+}
