@@ -206,18 +206,21 @@ echo "  rm 耗时 ${dt}s"
 ############ G. Hub ###########
 step "G. hub serve -> login -> push -> search -> pull"
 HS=$WORK/hub; mkdir -p "$HS"
-"$BOXLI_BIN" hub serve --port 7399 --data-dir "$HS" --username admin --password admin &
+"$BOXLI_BIN" hub serve --port 7399 --data-dir "$HS" --username admin --password admin >"$HS/serve.log" 2>&1 &
 HSRV=$!
 sleep 1
+# 所有客户端命令都用 < /dev/null 且 timeout 兜底，避免首次使用引导在
+# stdin 上死等（ReadString('\n') 挂起），以及网络命令无限阻塞。
+HB() { timeout 90 "$BOXLI_BIN" "$@" < /dev/null; }
 export BOXLI_HUB=http://127.0.0.1:7399
-BOXLI_HOME="$HS" "$BOXLI_BIN" login http://127.0.0.1:7399 --username admin --password admin --data-dir "$HS" >/dev/null 2>&1 \
-  && pass "hub login" || fail "hub login"
-BOXLI_HOME="$HS" "$BOXLI_BIN" push demo:v1 "$BOXLI_HOME/images/demo/v1/source.boxli" --hub http://127.0.0.1:7399 --data-dir "$HS" >/dev/null 2>&1 \
-  && pass "hub push" || fail "hub push"
-if BOXLI_HOME="$HS" "$BOXLI_BIN" search demo --hub http://127.0.0.1:7399 --data-dir "$HS" 2>/dev/null | grep -q demo; then
+if BOXLI_HOME="$HS" HB login http://127.0.0.1:7399 --username admin --password admin --data-dir "$HS" >/dev/null 2>&1; then
+  pass "hub login"; else fail "hub login"; fi
+if BOXLI_HOME="$HS" HB push demo:v1 "$BOXLI_HOME/images/demo/v1/source.boxli" --hub http://127.0.0.1:7399 --data-dir "$HS" >/dev/null 2>&1; then
+  pass "hub push"; else fail "hub push"; fi
+if BOXLI_HOME="$HS" HB search demo --hub http://127.0.0.1:7399 --data-dir "$HS" 2>/dev/null | grep -q demo; then
   pass "hub search"; else fail "hub search"; fi
-BOXLI_HOME="$HS" "$BOXLI_BIN" pull demo:v1 --hub http://127.0.0.1:7399 --data-dir "$HS" >/dev/null 2>&1 \
-  && pass "hub pull" || fail "hub pull"
+if BOXLI_HOME="$HS" HB pull demo:v1 --hub http://127.0.0.1:7399 --data-dir "$HS" >/dev/null 2>&1; then
+  pass "hub pull"; else fail "hub pull"; fi
 kill "$HSRV" 2>/dev/null || true
 
 ############ 清理 ############
