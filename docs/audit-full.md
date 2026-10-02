@@ -98,3 +98,20 @@ commit `1cadc97`；配套测试（mock socket、AF_UNIX socketpair）：
 
 - 特权 e2e 需以 root 运行 `docs/verify-root.sh`（见其日志）。
 - doctor/scaffold 为工具性命令，可按需补测。
+### fix(netlink): LinkUp/LinkDown hit the nlmsghdr seq, not ifinfomsg (EAGAIN)
+
+**现象**：root 真机上 `CAP_NET_ADMIN` 有效、二进制也已重编最新，但
+`上线网桥 boxli0: rtnetlink add-link 等待应答超时 ... resource temporarily
+unavailable` 仍复现。
+
+**根因**：`setIFFBuf` 把 `IFF_UP` 写进了 `buf[8:12]/[12:16]`——那是
+16 字节 `nlmsghdr` 的 **seq/pid**，不是随后 16 字节 `struct ifinfomsg` 的
+`ifi_flags/ifi_change`（应在 `buf[24:32]`）。于是 `LinkUp`/`LinkDown` 发出去
+的请求 seq 被覆盖、且 `ifi_change=0` → 内核丢弃、不回 ACK → `recvLoop`
+超时 EAGAIN。这解释了为何即便有 CAP_NET_ADMIN、最新二进制也仍 EAGAIN。
+
+**修复**：`setIFFBuf` 改写到 `header+8 / header+12`（`buf[24/28]`）。回归测试
+`TestSetIFFBufWritesIfinfomsg`、`TestLinkUpRequestLayout` 断言 seq 不被改、
+flags/change 命中 ifinfomsg。
+
+commit `779cbf5`
