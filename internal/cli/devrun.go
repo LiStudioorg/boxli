@@ -15,7 +15,7 @@ import (
 
 // newSpikeCommand 注册隐藏命令 `boxli dev-run`：spike / 基准测试入口，
 // 直接在指定 rootfs 上以前台方式运行容器，等待退出并回传退出码。
-// 正式命令是 `boxli run`（尚未实现），两者共用 internal/runtime。
+// 与 `boxli run`（正式命令）共用 internal/runtime。
 func newSpikeCommand(out io.Writer) *cobra.Command {
 	var (
 		rootfs   string

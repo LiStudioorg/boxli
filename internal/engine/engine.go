@@ -53,13 +53,13 @@ type RunSpec struct {
 	Restart store.Restart
 	// Detach 后台：fork shim，返回即容器 ID；nil=前台持有容器进程。
 	Detach bool
-	// Ports / Volumes 阶段 3 占位：仅记录，运行时忽略（调用方告警）。
+	// Ports / Volumes 是 -p / -v 原始参数，运行时分别接入网络 NAT 与卷挂载。
 	Ports   []string
 	Volumes []string
 	// Network 是接入的网络名（boxli0/自定义/host/none）；IP 为期望地址（可空）。
 	Network string
 	IP      string
-	// MemoryMB / CPUs / PidsLimit 阶段 3 占位：仅记录。
+	// MemoryMB / CPUs / PidsLimit 是资源参数的便捷字段（等价字段已并入 Limits）。
 	MemoryMB  int
 	CPUs      float64
 	PidsLimit int

@@ -92,7 +92,7 @@ func wireNetworkBeforeStart(st *store.Store, cfg *store.ContainerConfig, netName
 			return err
 		}
 		if len(ports) > 0 {
-			slog.Warn("网络 %s 不支持端口映射，忽略 -p", "net", netName)
+			return fmt.Errorf("网络 %s 不支持端口映射（-p 仅 bridge 网络可用）", netName)
 		}
 		return nil
 	}
