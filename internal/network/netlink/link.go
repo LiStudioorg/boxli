@@ -176,17 +176,32 @@ func setIFFBuf(buf []byte, flags, change uint32) []byte {
 	return buf
 }
 
-// SetLinkMaster 把链路挂到指定主链路（网桥）下。
+// SetLinkMaster 把链路 name 挂到网桥 master 下。
+// RTM_NEWLINK 的主体必须是待被挂接的链路 name（其 ifinfomsg.ifindex +
+// IFLA_IFNAME），IFLA_MASTER 才指向网桥。此前误把 master 的 ifindex 放进
+// ifinfomsg（得到"把网桥挂到网桥自己"）→ 内核回 EBUSY（device or resource
+// busy）。
 func SetLinkMaster(name, master string) error {
-	l, err := LinkByName(master)
+	slave, err := LinkByName(name) // 待挂接的链路
 	if err != nil {
 		return err
 	}
-	r := newReq(RTM_NEWLINK, 0, ifInfoMsgIdx(uint32(l.IfIndex)))
-	r.addAttrString(IFLA_IFNAME, name)
-	r.addAttr(IFLA_MASTER, u32(uint32(l.IfIndex)))
+	m, err := LinkByName(master) // 网桥
+	if err != nil {
+		return err
+	}
+	r := buildSetLinkMasterReq(uint32(slave.IfIndex), name, uint32(m.IfIndex))
 	_, err = r.do()
 	return err
+}
+
+// buildSetLinkMasterReq 构造把 slaveName 挂到 masterIfindex 网桥的 RTM_NEWLINK
+// 请求；主题是 slave（ifinfomsg.ifindex + IFLA_IFNAME），IFLA_MASTER 指向网桥。
+func buildSetLinkMasterReq(slaveIfindex uint32, slaveName string, masterIfindex uint32) *req {
+	r := newReq(RTM_NEWLINK, 0, ifInfoMsgIdx(slaveIfindex))
+	r.addAttrString(IFLA_IFNAME, slaveName)
+	r.addAttr(IFLA_MASTER, u32(masterIfindex))
+	return r
 }
 
 // SetLinkNetnsPid 把链路移动到 pid 的网络命名空间。
