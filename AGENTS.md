@@ -8,7 +8,7 @@ Boxli 是一个用 Go 编写的**轻量级容器引擎**，使用场景类似 Do
 
 ## 核心约定
 
-- **语言**：Go，纯 Go，**不使用 CGO**（`CGO_ENABLED=0`）。
+- **语言**：Go，纯 Go，**不使用 CGO**（`CGO_ENABLED=0`）。**唯一例外**：`internal/execns` 的 setns 进入容器挂载命名空间必须用 cgo（纯 Go 无法 setns(CLONE_NEWNS)，见 Go issue #9091）；该组件为可选构建（`-tags nocgo_exec` 走 stub），其余所有代码保持纯 Go。
 - **模块路径**：`github.com/LiStudioorg/boxli`。
 - **可执行文件**：`boxli`；`main.go` 位于项目根目录，便于在根目录直接 `go build`。
 - **镜像后缀**：`.boxli`。
@@ -44,7 +44,8 @@ boxli/
 │   ├── compose/         # compose 编排解析与执行
 │   ├── dev/             # 开发工具：文件监听、热重载
 │   ├── doctor/          # 环境自检：内核/namespace/cgroup/systemd/存储
-│   └── scaffold/        # 项目脚手架：boxfile/compose 模板与 lint
+│   ├── scaffold/        # 项目脚手架：boxfile/compose 模板与 lint
+│   └── execns/          # 可选 cgo 组件：exec 进入容器 mnt/uts/ipc/net/pid 命名空间
 ├── pkg/
 │   └── sdk/             # 对外 Go SDK，供第三方以库方式驱动 Boxli
 ├── docs/
@@ -179,7 +180,10 @@ boxli shutdown       由系统服务停止时调用，优雅停止自启容器
 1. **禁止**引入任何第三方容器组件 / 容器库（Docker、containerd、runc、buildkit、OCI 相关库、cgroups 库等）——容器生态完全自研。
 2. **禁止**做任何形式的 Docker / OCI 兼容（不做镜像格式转换、不实现Distribution API），Boxli 只认 `.boxli`。
 3. **Android 无 Root 官方不支持**（见《Android 支持策略》）：不得引入/检测 proot 或 Termux、不得引导用户提权，也不得尝试任何用户态隔离方案冒充真隔离。
-4. **禁止** CGO。
+4. **禁止** CGO。**唯一例外**为 `internal/execns`（进入容器挂载命名空间必须用 cgo，纯 Go 无法
+   `setns(CLONE_NEWNS)`，见 Go issue #9091）：该包必须同时提供 `-tags nocgo_exec` 与 `!linux`
+   的纯 Go stub，`CGO_ENABLED=0` 时自动走 stub，其余所有包继续禁止 CGO。新增任何 cgo 代码
+   必须先改本节。
 5. **禁止**在运行时引入常驻守护进程设计（引擎以单二进制按需执行为目标，服务化另立 RFC）。
 6. **禁止**未经文档约定就新增顶层目录或改变 `pkg/sdk` 公开 API。
 
@@ -215,12 +219,27 @@ CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -o boxli-darwin-arm64 .
 
 除此之外的第三方依赖一律不批；容器 / 镜像 / OCI / cgroups 相关库永久禁止（见"禁止事项"）。日志、配置、压缩、归档一律用标准库（`log/slog`、`archive/tar`、`compress/gzip`、`encoding/json`、`crypto/sha256`）。
 
-## 当前阶段：阶段 5（v0.5.0 半成品补齐已收官）
+## 当前阶段：v0.6.0（真机验收 + 审计已完成）
 
 阶段 0 已完成：目录骨架、`go.mod`、文档、占位包，并已发布 `v0.1.0` 被 pkg.go.dev 收录。
 阶段 1 / 阶段 2 已完成：镜像格式、运行时、boot/shim 体系、`boxli run/stop/ps/rm` 端到端（见下）。
 阶段 3 已完成：网络/卷/资源/CLI/Hub 五个并行模块合并入 main（v0.3.0）。
 阶段 4 已完成：把网络/卷/资源参数真正作用到容器上（v0.4.0）。
+
+**v0.6.0 已完成**：在真实 root 服务器上做全功能验收，修复发现的缺陷，并补齐静态与安全审计。
+
+- **cgroup 限额真正生效**：cgroups v2 下 `cgroup.subtree_control` 未开启 `cpu memory pids`
+  时子组限额文件不可写、写入被静默忽略；现由 `internal/resource` 在 `Setup` 前显式开启控制器。
+- **`boxli exec` 真正进入全部命名空间**：纯 Go 无法 `setns(CLONE_NEWNS)`（Go issue #9091），
+  改由可选 cgo 组件 `internal/execns` 在单线程子进程中完成 setns + execve；纯 Go 构建走 stub。
+- **卷 `:ro` 真正只读**：bind 挂载后补 `MS_REMOUNT|MS_BIND|MS_RDONLY`，否则 `:ro` 形同虚设。
+- **同名容器并发创建原子化**：名字唯一性从"扫描后创建"（TOCTOU）改为 `O_EXCL` 锁文件；
+  `rm` 改走 `RemoveContainer`，避免绕过锁释放导致名字永久泄漏。
+- **netlink 组包缺陷修复**：`IFF_UP` 写入 nlmsghdr 的 seq/pid 字段、`SetLinkMaster` 目标写反、
+  `addroute` 的 `rtm_type=RTN_UNSPEC`、`addaddr` 前缀写进 `ifa_flags`——四处均导致真实 EAGAIN/EBUSY/EINVAL/ENETUNREACH。
+- **审计与验收产物**：[docs/test-report-v0.6.0.md](docs/test-report-v0.6.0.md)（A–J 真机功能验收，
+  PASS=10 / SKIP=1 / FAIL=0）、[docs/audit-v0.6.0.md](docs/audit-v0.6.0.md)（静态 + 安全 + 覆盖率）。
+  可复现脚本：[docs/verify-root.sh](docs/verify-root.sh) + [docs/verify-root.md](docs/verify-root.md)。
 
 **阶段 5 已完成（v0.5.0）**：消除"半成品"——
 - **`boxli build` 真正接线**：从"只输出构建计划"改为真正调用 `build.Build()` 构造
