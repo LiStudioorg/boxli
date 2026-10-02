@@ -68,9 +68,15 @@ else
   fail "缺少 CAP_NET_ADMIN（网络（veth/网桥/NFT）无法工作）"
 fi
 # cgroup 可写性：root 下仍可能因 delegation/只读挂载而无法建组。
+#
+# 探测方式必须是 mkdir 而不是 touch：cgroupfs 是虚拟文件系统，**只允许创建
+# 目录**，`touch <普通文件>` 在任何权限下都返回 EACCES。用 touch 探测会把
+# 完全正常、可正常限制资源的宿主机误判为"cgroup 不可写"（本机即如此：
+# touch 失败但 mkdir 成功，D 段资源限制三项全部 PASS）。
+# 建组才是 boxli 真正需要的操作，因此用它作为判据。
 prov=/sys/fs/cgroup/.boxli_wt_test
-if [ -e /sys/fs/cgroup/cgroup.controllers ] && touch "$prov" 2>/dev/null; then
-  rm -f "$prov" 2>/dev/null || true
+if [ -e /sys/fs/cgroup/cgroup.controllers ] && mkdir "$prov" 2>/dev/null; then
+  rmdir "$prov" 2>/dev/null || true
   pass "cgroup v2 可写"
 else
   fail "cgroup v2 不可写（/sys/fs/cgroup 只读或被 delegated，资源限制将不可用）"

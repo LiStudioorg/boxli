@@ -21,12 +21,30 @@ package execns
 #include <grp.h>
 #include <fcntl.h>
 #include <sched.h>
+#include <signal.h>
 #include <sys/wait.h>
 #include <sys/types.h>
 #include <errno.h>
 
 // execnsFork 进入 namespace 后 exec 目标命令。子进程内 C 单线程 setns。
 // 返回：>=0 = 子进程 pid；<0 = -(errno)。
+//
+// 采用**两段 fork**，而不是"setns 完直接 execve"：
+//
+// setns(CLONE_NEWPID) 有个关键语义——它**不会把调用者本身移入新的 PID
+// namespace**，只有之后 fork 出的子进程才是该 namespace 的成员。若在
+// setns(pid) 之后直接 execve，得到的进程本身不属于新 PID namespace，却
+// 被当作其成员使用；此时 Go runtime 启动阶段调用
+// clone(CLONE_THREAD) 创建线程会被内核以 EINVAL 拒绝，进程直接
+// fatal error: "failed to create new OS thread (have 2 already; errno=22)"。
+//
+// 纯 C/静态二进制（如 busybox）不会立刻建线程，所以看不出问题；但任何 Go
+// 程序在容器内都会立刻崩溃，而 boxli 的镜像与用户程序大量是 Go 写的。
+// 因此这里在 setns 全部完成后**再 fork 一次**：孙进程才是新 PID namespace
+// 的真正成员，其 clone(CLONE_THREAD) 合法。runc 用同样的两段式做法。
+//
+// 中间的 fork 子进程负责 wait 孙进程并把退出码原样回传，保证调用方仍只需
+// wait 一次。
 static long execnsFork(
 	const int* nsFds, int nsCount,
 	const char* workdir,
@@ -37,12 +55,29 @@ static long execnsFork(
 {
 	pid_t pid = fork();
 	if (pid < 0) return -errno;
-	if (pid > 0) return pid;   // 父
+	if (pid > 0) return pid;   // 父：直接返回中间进程 pid
 
-	// —— 子进程（C 单线程上下文）——
+	// —— 中间进程（C 单线程上下文）——
 	for (int i = 0; i < nsCount; i++) {
 		if (setns(nsFds[i], 0) != 0) { _exit(128); }   // nstype=0 自适应
 	}
+
+	// setns(pid) 之后再 fork：孙进程才真正位于目标 PID namespace。
+	pid_t leaf = fork();
+	if (leaf < 0) { _exit(135); }
+	if (leaf > 0) {
+		// 中间进程：等待孙进程并原样回传退出状态。
+		int st = 0;
+		while (waitpid(leaf, &st, 0) < 0) {
+			if (errno == EINTR) continue;
+			_exit(136);
+		}
+		if (WIFEXITED(st))   _exit(WEXITSTATUS(st));
+		if (WIFSIGNALED(st)) { signal(WTERMSIG(st), SIG_DFL); raise(WTERMSIG(st)); _exit(137); }
+		_exit(138);
+	}
+
+	// —— 孙进程：目标 PID namespace 的成员，可安全创建线程 ——
 	if (workdir && workdir[0] && chdir(workdir) != 0) { _exit(129); }
 	if (useUid || useGid) { if (setgroups(0, NULL) != 0) { _exit(130); } }
 	if (useGid && setgid(gid) != 0) { _exit(131); }
