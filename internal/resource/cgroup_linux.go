@@ -8,6 +8,7 @@ package resource
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -61,7 +62,25 @@ func readOr(def, path string) string {
 
 // Setup 创建容器专属 cgroup 并写入全部限制。l 为空或 Empty() 时仍创建组
 // （便于 stats 统一采集），只是不写限制。
+//
+// 形态自适应：优先 cgroups v2 统一层级；宿主只有 v1（大量 Android 设备）
+// 时自动走 v1 分支。两条路径的签名与语义完全一致，调用方无需关心。
 func Setup(containerID string, l *Limits) (*Cgroup, error) {
+	switch CgroupModeOf() {
+	case ModeV2:
+		return setupV2(containerID, l)
+	case ModeV1:
+		root := v1Root()
+		slog.Debug("使用 cgroups v1 写入资源限制",
+			slog.String("container", containerID), slog.String("root", root))
+		return setupV1(containerID, l, root)
+	default:
+		return nil, fmt.Errorf("未探测到可用的 cgroup 挂载（v1/v2 均不可用）: %w", ErrUnsupported)
+	}
+}
+
+// setupV2 是原来的 cgroup v2 路径，签名与行为保持不变。
+func setupV2(containerID string, l *Limits) (*Cgroup, error) {
 	c := NewCgroup(containerID)
 	// cgroup v2：必须在父组 subtree_control 启用控制器，子组的限制文件才可写。
 	if err := enableControllers(); err != nil {
@@ -79,7 +98,20 @@ func Setup(containerID string, l *Limits) (*Cgroup, error) {
 }
 
 // Apply 把限制写入已存在的 cgroup（Setup/Update 共用）。
+// 按当前宿主的 cgroup 形态分派到 v2 或 v1 写入路径。
 func Apply(c *Cgroup, l *Limits) error {
+	if CgroupModeOf() == ModeV1 {
+		root := c.Root
+		if root == "" || v1Root() != "" {
+			root = v1Root()
+		}
+		return applyV1(c, l, root)
+	}
+	return applyV2(c, l)
+}
+
+// applyV2 是原来的 cgroup v2 写入路径。
+func applyV2(c *Cgroup, l *Limits) error {
 	if err := l.Validate(); err != nil {
 		return err
 	}
@@ -152,6 +184,9 @@ func Apply(c *Cgroup, l *Limits) error {
 // 由 runtime 在 fork 出 init 后调用；cgroup 必须已由 Setup 创建。
 // cgroup.procs 是内核虚拟文件，不支持 rename，直接整行写入追加 PID。
 func AddPID(containerID string, pid int) error {
+	if CgroupModeOf() == ModeV1 {
+		return addPIDV1(containerID, v1Root(), pid)
+	}
 	c := NewCgroup(containerID)
 	if _, err := os.Stat(c.Path); os.IsNotExist(err) {
 		return fmt.Errorf("cgroup %s 不存在（先 Setup）: %w", c.Path, ErrUnsupported)
@@ -245,8 +280,11 @@ func (c *Cgroup) writeDevices(gpus, npus []DeviceRequest) error {
 	return fmt.Errorf("设备直通未实现: %w", ErrUnsupported)
 }
 
-// Remove 删除容器 cgroup。
+// Remove 删除容器 cgroup（v1 下删除其在各控制器下的目录）。
 func Remove(containerID string) error {
+	if CgroupModeOf() == ModeV1 {
+		return removeV1(containerID, v1Root())
+	}
 	c := NewCgroup(containerID)
 	if _, err := os.Stat(c.Path); errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -259,6 +297,13 @@ func Remove(containerID string) error {
 
 // Update 动态调整已存在 cgroup 的限制（boxli update）。
 func Update(containerID string, l *Limits) error {
+	if CgroupModeOf() == ModeV1 {
+		root := v1Root()
+		if !v1StatsExist(containerID, root) {
+			return fmt.Errorf("容器 %s 无 cgroup（可能未运行或被限制）: %w", containerID, ErrUnsupported)
+		}
+		return applyV1(newV1Cgroup(containerID, root), l, root)
+	}
 	c := NewCgroup(containerID)
 	if _, err := os.Stat(c.Path); err != nil {
 		return fmt.Errorf("容器 %s 无 cgroup（可能未运行或被限制）: %w", containerID, ErrUnsupported)
@@ -317,6 +362,13 @@ func Collect(c *Cgroup) (*Stats, error) {
 
 // StatsFor 按容器 ID 取 cgroup 并采集。
 func StatsFor(containerID string) (*Stats, error) {
+	if CgroupModeOf() == ModeV1 {
+		root := v1Root()
+		if !v1StatsExist(containerID, root) {
+			return &Stats{ContainerID: containerID, Running: false}, nil
+		}
+		return collectV1(newV1Cgroup(containerID, root), root)
+	}
 	c := NewCgroup(containerID)
 	if _, err := os.Stat(c.Path); errors.Is(err, os.ErrNotExist) {
 		return &Stats{ContainerID: containerID, Running: false}, nil
