@@ -130,3 +130,17 @@ RTM_NEWLINK 主体必须是被挂接的链路（hostVeth），`IFLA_MASTER` 才�
 作 IFLA_MASTER。回归测试断言 ifinfomsg.ifindex=slave、IFLA_MASTER=master。
 
 commit `4b3a833`
+
+### fix(netlink): AddRoute built struct rtmsg wrong (rtm_type=RTN_UNSPEC → EINVAL)
+
+**现象**：veth 创建 + 挂网桥成功后，容器里 `添加默认路由 via 172.18.0.1:
+rtnetlink add-route: invalid argument`。
+
+**根因**：`AddRoute`/`DelRoute` 用 `PutU32(b[4:8], RT_TABLE_MAIN)` 构建
+`struct rtmsg`，把 `rtm_type`（byte7）盖成 0=RTN_UNSPEC，再把 RTN_UNICAST
+错写进 `rtm_flags`。内核拒收 → EINVAL。
+
+**修复**：`buildRouteMsg` 逐字节设 rtm_table=main、rtm_protocol=boot、
+rtm_scope=universe、rtm_type=unicast，flags 置 0。测试断言语义。
+
+commit `8ec16e9`
