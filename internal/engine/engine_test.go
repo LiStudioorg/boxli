@@ -190,3 +190,20 @@ func writeFakeImage(t *testing.T, dir string) error {
 	stByte, _ := json.Marshal(map[string]any{"ref": "demo:v1"})
 	return os.WriteFile(filepath.Join(dir, "state.json"), stByte, 0o644)
 }
+
+// TestBuildRootfsMergesImage 验证 BuildRootfs 能把假镜像的层合并到 targetDir。
+func TestBuildRootfsMergesImage(t *testing.T) {
+	st := &store.Store{Root: t.TempDir()}
+	imgDir := st.ImageDir("demo", "v1")
+	if err := writeFakeImage(t, imgDir); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(t.TempDir(), "rootfs")
+	if err := BuildRootfs(st, "demo:v1", target); err != nil {
+		t.Fatalf("BuildRootfs: %v", err)
+	}
+	// 假镜像层含 bin/sh 目录。
+	if fi, err := os.Stat(filepath.Join(target, "bin", "sh")); err != nil || !fi.Mode().IsRegular() {
+		t.Fatalf("合并后应存在 bin/sh: %v (mode=%v)", err, fi)
+	}
+}

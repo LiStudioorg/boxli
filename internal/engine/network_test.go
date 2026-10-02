@@ -122,3 +122,21 @@ func TestDisconnectContainer(t *testing.T) {
 	disconnectContainer(st, &store.ContainerConfig{Network: "host"})
 	disconnectContainer(st, &store.ContainerConfig{Network: "ghost", ID: "x"})
 }
+
+// TestNetEnvFor 验证 netEnvFor 对 host/none 直接给模式 env、nil cfg 返回 nil。
+func TestNetEnvFor(t *testing.T) {
+	st := &store.Store{Root: t.TempDir()}
+	if got := netEnvFor(st, nil, "h"); got != nil {
+		t.Fatalf("nil cfg 应返回 nil，实得 %v", got)
+	}
+	host := netEnvFor(st, &store.ContainerConfig{Network: "host", ID: "abc"}, "h")
+	if len(host) == 0 {
+		t.Fatal("host 网络应返回模式 env")
+	}
+	none := netEnvFor(st, &store.ContainerConfig{Network: "none", ID: "abc"}, "h")
+	if len(none) == 0 {
+		t.Fatal("none 网络应返回模式 env")
+	}
+	// 自定义/未知网络名解析失败应返回 nil（不 panic）。
+	_ = netEnvFor(st, &store.ContainerConfig{Network: "ghostnet", ID: "abc"}, "h")
+}
