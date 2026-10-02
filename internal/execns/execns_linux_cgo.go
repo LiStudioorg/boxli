@@ -22,6 +22,7 @@ package execns
 #include <fcntl.h>
 #include <sched.h>
 #include <signal.h>
+#include <sys/ioctl.h>
 #include <sys/wait.h>
 #include <sys/types.h>
 #include <errno.h>
@@ -83,6 +84,18 @@ static long execnsFork(
 	if (useGid && setgid(gid) != 0) { _exit(131); }
 	if (useUid && setuid(uid) != 0) { _exit(132); }
 	if (dup2(inFd, 0) < 0 || dup2(outFd, 1) < 0 || dup2(errFd, 2) < 0) { _exit(133); }
+
+	// TTY 会话：仅当 stdin 是终端（openpty 的从端）时才建。
+	// 必须 setsid() 之后再 TIOCSCTTY，否则该终端不会成为本进程的**控制终端**，
+	// 容器内 `tty` 会报 "not a tty"，job control 与 Ctrl+C 的信号投递也会失效。
+	// 顺序不能反：TIOCSCTTY 要求调用者已是会话首进程（setsid 之后成立）。
+	// 失败不致命（非 TTY 场景本就不该建），继续 exec。
+	if (isatty(0)) {
+		if (setsid() >= 0) {
+			ioctl(0, TIOCSCTTY, 1);
+		}
+	}
+
 	execve(argv[0], argv, envp);
 	_exit(134);
 }

@@ -7,12 +7,23 @@ package runtime
 
 import (
 	"fmt"
-	"github.com/LiStudioorg/boxli/internal/execns"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
 	"unsafe"
+
+	"github.com/LiStudioorg/boxli/internal/execns"
+)
+
+// pty ioctl 常量（syscall 包未导出）。编码：dir<<30 | size<<16 | type<<8 | nr。
+//
+//	TIOCSPTLCK：向内核**写入** 4 字节（dir=1），参数是 int 指针，指向 0 = 解锁；
+//	TIOCGPTN ：从内核**读出** 4 字节（dir=2），参数是 uint32 指针，返回从端号。
+const (
+	tiocsptlck = 0x40045431
+	tiocgptn   = 0x80045430
 )
 
 // ExecOptions 定义见 config.go（跨平台）。
@@ -119,22 +130,33 @@ func applyExecUser(user string) error {
 }
 
 // openpty 分配一个伪终端，返回 master/slave。从 /dev/ptmx 创建。
+//
+// 易错点：TIOCSPTLCK（解锁从端）的第三个参数是**指向 int 的指针**，不是
+// 解锁值本身。内核会从该地址读 4 字节，因此传字面量 0 会让内核解引用地址 0
+// 并返回 EFAULT（"bad address"）——这正是此前 `exec -it` 恒定失败的根因。
+// 必须传 &unlock。两个 ioctl 的指针都要用 unsafe.Pointer 包裹，Go 的
+// Syscall 不会阻止 GC 在调用期间移动/回收被指向的变量。
 func openpty() (master, slave *os.File, err error) {
 	m, err := os.OpenFile("/dev/ptmx", os.O_RDWR, 0)
 	if err != nil {
 		return nil, nil, fmt.Errorf("打开 /dev/ptmx: %w", err)
 	}
-	// TIOCSPTLCK=0x40045431：解锁。
-	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, m.Fd(), 0x40045431, 0); errno != 0 {
+	// TIOCSPTLCK=0x40045431：解锁从端；参数是指针，指向 0 表示"解锁"。
+	unlock := int32(0)
+	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, m.Fd(), tiocsptlck,
+		uintptr(unsafe.Pointer(&unlock))); errno != 0 {
 		_ = m.Close()
-		return nil, nil, errno
+		return nil, nil, fmt.Errorf("解锁从端: %w", errno)
 	}
 	// TIOCGPTN=0x80045430：取从端号。
 	var n uint32
-	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, m.Fd(), 0x80045430, uintptr(unsafe.Pointer(&n))); errno != 0 {
+	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, m.Fd(), tiocgptn,
+		uintptr(unsafe.Pointer(&n))); errno != 0 {
 		_ = m.Close()
-		return nil, nil, errno
+		return nil, nil, fmt.Errorf("取从端号: %w", errno)
 	}
+	// 指向局部变量的指针跨 Syscall 使用后必须立即取用，避免被 GC 判定为死变量。
+	runtime.KeepAlive(&n)
 	s, err := os.OpenFile("/dev/pts/"+strconv.Itoa(int(n)), os.O_RDWR|syscall.O_NOCTTY, 0)
 	if err != nil {
 		_ = m.Close()

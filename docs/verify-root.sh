@@ -281,6 +281,12 @@ step "D. 资源限制（--memory 256 --cpus 1）"
 "$BOXLI_BIN" run -d --name demo3 --network boxli0 --memory 256 --cpus 1 demo:v1
 for _ in 1 2 3 4 5; do cid3=$(cid_of demo3); [ -n "$cid3" ] && break; sleep 1; done
 echo "  demo3 id=$cid3"
+# 等容器真正 Up 再读 cgroup，而不是只等到 ps 里出现 ID。
+# cid_of 走 `ps -a`，容器目录一落盘就能查到（config.json 写入即可见），
+# 但 cgroup.procs 是由 **fork 之后的子进程** 调 resource.AddPID 填的，比
+# memory.max/cpu.max（Setup 在 fork 前就写好）晚。只等 ID 会稳定读到空的
+# cgroup.procs，把正常的启动时序误判成失败。
+for _ in $(seq 1 10); do is_up demo3 && break; sleep 1; done
 cgrp="/sys/fs/cgroup/boxli/$cid3"
 mem=$(cat "$cgrp/memory.max" 2>/dev/null || echo missing)
 cpu=$(cat "$cgrp/cpu.max" 2>/dev/null || echo missing)
