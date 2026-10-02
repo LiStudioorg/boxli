@@ -161,10 +161,18 @@ func mustIndex(name string) uint32 {
 	return uint32(l.IfIndex)
 }
 
-// setIFFBuf 修正 ifinfomsg 头里的 flags 与 change 字段（offset 8 与 12）。
+// setIFFBuf 修正 ifinfomsg 头里的 flags 与 change 字段。
+// buf 是一条完整 nlmsg：偏移 0..16 是 nlmsghdr，16..32 是 struct ifinfomsg，
+// 其 ifi_flags/ifi_change 位于 ifinfomsg 的 offset 8/12，即 buf 的 24/28。
+// （此前在这里写 buf[8:12]/[12:16]，实为把 nlmsghdr 的 seq/pid 覆盖成
+// 0x1，导致内核丢包、命令 EAGAIN 超时。）
 func setIFFBuf(buf []byte, flags, change uint32) []byte {
-	binary.LittleEndian.PutUint32(buf[8:12], flags)
-	binary.LittleEndian.PutUint32(buf[12:16], change)
+	const nlmsgHdrLen = 16
+	const ifiFlagsOff = 8 // struct ifinfomsg 内 ifi_flags 偏移
+	if len(buf) >= nlmsgHdrLen+ifiFlagsOff+8 {
+		binary.LittleEndian.PutUint32(buf[nlmsgHdrLen+ifiFlagsOff:], flags)
+		binary.LittleEndian.PutUint32(buf[nlmsgHdrLen+ifiFlagsOff+4:], change)
+	}
 	return buf
 }
 
