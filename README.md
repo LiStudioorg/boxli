@@ -14,26 +14,27 @@ Boxli 是一个用 Go 编写的轻量级容器引擎：常驻内存 10–20 MiB�
 
 ## 快速开始
 
-> Boxli 已进入 **阶段 4 收官（v0.4.0）**：镜像、运行时、网络、卷、资源限制、`exec`、Hub 分发均已落地，且 `-p`/`-v`/`--memory`/`--cpus` 等参数已**真正作用到容器**（veth 进 netns、卷 bind、cgroup 写入）。除标注"开发中"的命令外均为当前真实能力。
+> Boxli 已进入 **阶段 5（v0.5.0）**：镜像、运行时、网络、卷、资源限制、`exec`、Hub 分发均落地，且 `boxli build` 已真正构建并导入镜像、`compose up/scale` 真正创建容器。除标注"开发中"的命令外均为当前真实能力。
 
 ```bash
-boxli pull ./myapp-1.0.boxli                           # 导入本地 .boxli 镜像文件
-boxli run -p 8080:80 -v data:/data --memory 256 myapp:v1   # 端口映射 + 卷挂载 + 内存限制（MiB）
-boxli ps                                               # 查看运行中的容器
-boxli exec -it myapp /bin/sh                           # 进入运行中容器的命名空间执行命令
-boxli network ls                                       # 查看容器网络
-boxli volume ls                                        # 查看卷
-boxli resource info                                    # 查看资源能力（cgroups/GPU 等）
-boxli stats                                            # 实时查看容器资源用量
+boxli build -t demo:v1 .                            # 根据 Boxfile 构建 .boxli 并自动导入
+boxli run -p 8080:80 -v data:/data --memory 256 demo:v1   # 端口映射 + 卷挂载 + 内存限制（MiB）
+boxli ps                                            # 查看运行中的容器
+boxli exec -it demo /bin/sh                         # 进入运行中容器的命名空间执行命令
+boxli network ls                                    # 查看容器网络
+boxli volume ls                                     # 查看卷
+boxli resource info                                 # 查看资源能力（cgroups 等）
+boxli stats                                         # 实时查看容器资源用量
 ```
 
-> 当前已落地：`.boxli` 镜像导入（`pull`）、容器运行（`run`）、列出（`ps`）、
-> 命名空间执行（`exec`）、网络（`network`）、卷（`volume`）、资源限制
+> 当前已落地：镜像构建（`build`）、`.boxli` 镜像导入（`pull`）、容器运行（`run`）、
+> 列出（`ps`）、命名空间执行（`exec`）、网络（`network`）、卷（`volume`）、资源限制
 > （`--memory/--cpus/--pids-limit` 等）、镜像产物操作（`tag/commit/save/load/export/import`）、
-> Hub 分发（`login/pull/push/search`）与服务端（`hub serve`）。可执行 `boxli --help` 查看完整命令树。
+> Hub 分发（`login/pull/push/search`）与服务端（`hub serve`）、compose 编排
+> （`compose up/down/ps/logs/scale/config`）。可执行 `boxli --help` 查看完整命令树。
 
 > ⚠️ v0.4.0 起网络 veth、cgroup 写入、`boxli exec` 需要 **root**（CAP_NET_ADMIN / CAP_SYS_ADMIN）；
-> 非 root 下会给出"需要 root"清晰提示并降级（如部分网络/卷操作、无 cgroup 时）。
+> 未实现的资源能力（`--storage`/`--gpu`/`--npu`/`--network-bandwidth`）会显式报错而非静默生效。
 
 ## Hub 分发（login / pull / push / search）
 
@@ -47,6 +48,20 @@ boxli search myapp                     # 在 Hub 上搜索镜像
 ```
 
 `boxli pull ./x.boxli` 仍保留本地文件导入语义；Hub 地址按 `--hub` > `$BOXLI_HUB` > `http://127.0.0.1:3727` 顺序解析。
+
+## 构建镜像（build）
+
+根据 Boxfile（`FROM` / `COPY` / `ENV` / `WORKDIR` / `ENTRYPOINT` / `CMD` /
+`EXPOSE` / `VOLUME` / `LABEL` / `USER` / `ARG`）构造 `.boxli` 镜像并自动导入本地：
+
+```bash
+boxli build -t demo:v1 .                 # 用 ./Boxfile（或 ./boxfile）构建并导入 demo:v1
+boxli build -f path/to/Boxfile -t demo:v1 --context ./src
+boxli images                              # 看到 demo:v1
+```
+
+- `FROM scratch` 为空基础镜像；`FROM name:version` 需先在本地存在（或先 `boxli pull`）。
+- 未实现的指令（`RUN`、远程 `ADD`）与资源能力会显式报错，不假装成功。
 
 ## 容器网络
 

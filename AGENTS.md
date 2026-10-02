@@ -215,11 +215,25 @@ CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -o boxli-darwin-arm64 .
 
 除此之外的第三方依赖一律不批；容器 / 镜像 / OCI / cgroups 相关库永久禁止（见"禁止事项"）。日志、配置、压缩、归档一律用标准库（`log/slog`、`archive/tar`、`compress/gzip`、`encoding/json`、`crypto/sha256`）。
 
-## 当前阶段：阶段 4（v0.4.0 运行时接入已收官）
+## 当前阶段：阶段 5（v0.5.0 半成品补齐已收官）
 
 阶段 0 已完成：目录骨架、`go.mod`、文档、占位包，并已发布 `v0.1.0` 被 pkg.go.dev 收录。
 阶段 1 / 阶段 2 已完成：镜像格式、运行时、boot/shim 体系、`boxli run/stop/ps/rm` 端到端（见下）。
 阶段 3 已完成：网络/卷/资源/CLI/Hub 五个并行模块合并入 main（v0.3.0）。
+阶段 4 已完成：把网络/卷/资源参数真正作用到容器上（v0.4.0）。
+
+**阶段 5 已完成（v0.5.0）**：消除"半成品"——
+- **`boxli build` 真正接线**：从"只输出构建计划"改为真正调用 `build.Build()` 构造
+  `.boxli` 镜像并自动 `boxli pull` 导入本地 store；支持 `-t/--tag`、`-f/--file`、
+  构建上下文、`FROM scratch`。
+- **`compose up / scale`**：从占位改为经 `engine.Run` 真实创建容器 / 扩缩副本
+  （boxfile/build 服务就地构建并导入）。
+- **未实现的资源能力**（`--storage`、`--gpu/--npu`、`--network-bandwidth`）在
+  CLI 层显式拒绝，`resource.write*` 返回 `ErrUnsupported`，不再"降级 warn 后假装成功"；
+  `-p` 在 host/none 网络显式报错。
+- **Android 支持策略定稿**：有 Root 官方原生支持；无 Root 官方不支持（见上文）。
+- 特权路径（容器 B–F）由 root 真机按 [docs/e2e-v0.5.0.md](docs/e2e-v0.5.0.md) 验收，
+  审计见 [docs/audit-v0.5.0.md](docs/audit-v0.5.0.md)。
 
 **阶段 4 已完成（v0.4.0）**：把阶段 3 合并的参数真正作用到容器上——
 - **网络接入**：`boxli run` 启动时创建 veth pair，宿主端进网桥、容器端进容器
