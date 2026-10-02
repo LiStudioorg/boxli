@@ -3,6 +3,16 @@
 
 package resource
 
+import "path/filepath"
+
+// cgroupV2GroupRoot 是 cgroup v2 统一层级的根（boxli 父组的所在根），同时
+// 用作 v2 可用性判定（读 <root>/cgroup.controllers）的基准路径。
+//
+// 生产环境恒等于 CgroupV2Mount，与 cgroupV1Roots 一样只作为测试缝存在：
+// 测试注入临时目录即可完整驱动 setupV2/applyV2/AddPID/Collect 等整条 v2
+// 写入链，而不必（也不应该在 CI 里）真写宿主 /sys/fs/cgroup。
+var cgroupV2GroupRoot = CgroupV2Mount
+
 // Cgroup 表示一个容器专属的 cgroups v2 组及其路径。
 // Linux 下路径为 <CgroupV2Mount>/<BoxliGroup>/<containerID>。
 type Cgroup struct {
@@ -15,18 +25,13 @@ type Cgroup struct {
 }
 
 // NewCgroup 返回容器对应的 cgroup 句柄（不检查是否存在）。
+//
+// 路径用 filepath.Join 而非手工拼接：手工拼接会在挂载点前多出一个 "//"，
+// 虽然内核容忍，但会污染错误信息（曾让排障者误以为路径来自别处）。
 func NewCgroup(containerID string) *Cgroup {
-	return &Cgroup{Root: CgroupV2Mount, ContainerID: containerID,
-		Path: joinCGroup(CgroupV2Mount, BoxliGroup, containerID)}
-}
-
-// joinCGroup 拼接 cgroup 路径（平台无关实现，Linux 用 /）。
-func joinCGroup(parts ...string) string {
-	out := ""
-	for _, p := range parts {
-		out = out + "/" + p
-	}
-	return out
+	root := cgroupV2GroupRoot
+	return &Cgroup{Root: root, ContainerID: containerID,
+		Path: filepath.Join(root, BoxliGroup, containerID)}
 }
 
 // Stats 是一次 stats 采集结果。

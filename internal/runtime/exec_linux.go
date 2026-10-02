@@ -8,6 +8,7 @@ package runtime
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -129,6 +130,15 @@ func applyExecUser(user string) error {
 	return nil
 }
 
+// devPtmxPath / devPtsDir 是 pty 相关路径，做成变量以便测试注入。
+//
+// 生产环境恒为 /dev/ptmx 与 /dev/pts；测试通过注入临时 devpts 挂载点，
+// 让 openpty 的分配逻辑（含 TIOCSPTLCK 指针语义）可被真实执行覆盖。
+var (
+	devPtmxPath = "/dev/ptmx"
+	devPtsDir   = "/dev/pts"
+)
+
 // openpty 分配一个伪终端，返回 master/slave。从 /dev/ptmx 创建。
 //
 // 易错点：TIOCSPTLCK（解锁从端）的第三个参数是**指向 int 的指针**，不是
@@ -137,9 +147,9 @@ func applyExecUser(user string) error {
 // 必须传 &unlock。两个 ioctl 的指针都要用 unsafe.Pointer 包裹，Go 的
 // Syscall 不会阻止 GC 在调用期间移动/回收被指向的变量。
 func openpty() (master, slave *os.File, err error) {
-	m, err := os.OpenFile("/dev/ptmx", os.O_RDWR, 0)
+	m, err := os.OpenFile(devPtmxPath, os.O_RDWR, 0)
 	if err != nil {
-		return nil, nil, fmt.Errorf("打开 /dev/ptmx: %w", err)
+		return nil, nil, fmt.Errorf("打开 %s: %w", devPtmxPath, err)
 	}
 	// TIOCSPTLCK=0x40045431：解锁从端；参数是指针，指向 0 表示"解锁"。
 	unlock := int32(0)
@@ -157,7 +167,7 @@ func openpty() (master, slave *os.File, err error) {
 	}
 	// 指向局部变量的指针跨 Syscall 使用后必须立即取用，避免被 GC 判定为死变量。
 	runtime.KeepAlive(&n)
-	s, err := os.OpenFile("/dev/pts/"+strconv.Itoa(int(n)), os.O_RDWR|syscall.O_NOCTTY, 0)
+	s, err := os.OpenFile(filepath.Join(devPtsDir, strconv.Itoa(int(n))), os.O_RDWR|syscall.O_NOCTTY, 0)
 	if err != nil {
 		_ = m.Close()
 		return nil, nil, fmt.Errorf("打开从端: %w", err)

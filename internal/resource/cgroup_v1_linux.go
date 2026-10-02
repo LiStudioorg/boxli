@@ -70,7 +70,9 @@ func DetectCgroupMounts() []string {
 		}
 	}
 	if Available() {
-		add(CgroupV2Mount)
+		// 走 seam 而非常量：生产两者相等；测试注入假根时返回注入值，
+		// 保证"探测结果 = 实际使用的挂载点"这一语义在测试里同样成立。
+		add(cgroupV2GroupRoot)
 	}
 	for _, root := range cgroupV1Roots {
 		if len(v1AvailableControllers(root)) > 0 {

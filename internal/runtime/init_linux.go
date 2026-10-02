@@ -72,12 +72,44 @@ const envShmSize = "BOXLI_SHM_SIZE"
 // devShmSize 返回本次容器 /dev/shm 的大小：环境变量优先，其次默认值。
 // 非法或非正值一律回落默认值，不让坏输入阻断容器启动。
 func devShmSize() int64 {
-	if v := os.Getenv(envShmSize); v != "" {
-		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
-			return n
-		}
+	v := strings.TrimSpace(os.Getenv(envShmSize))
+	if v == "" {
+		return defaultShmSize
 	}
+	if n, err := parseSizeSuffix(v); err == nil && n > 0 {
+		return n
+	}
+	// 非法值不能静默用默认值：用户会以为限制生效了。
+	slog.Warn("忽略非法的 "+envShmSize+"（期望字节数或带 K/M/G 后缀）",
+		slog.String("value", v), slog.Int64("fallback", defaultShmSize))
 	return defaultShmSize
+}
+
+// parseSizeSuffix 解析 "67108864" / "16m" / "512k" / "1g"（大小写不敏感）。
+// 支持后缀是必要的：只收裸字节数时，写 "16m" 的用户会得到静默的默认值，
+// 属于最糟糕的失败模式（配置看起来生效了，其实没有）。
+func parseSizeSuffix(v string) (int64, error) {
+	mult := int64(1)
+	if last := v[len(v)-1]; last >= '0' && last <= '9' {
+		// 纯数字。
+	} else {
+		switch last {
+		case 'k', 'K':
+			mult = 1 << 10
+		case 'm', 'M':
+			mult = 1 << 20
+		case 'g', 'G':
+			mult = 1 << 30
+		default:
+			return 0, strconv.ErrSyntax
+		}
+		v = v[:len(v)-1]
+	}
+	n, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	return n * mult, nil
 }
 
 // syscallUnmount 卸载一个挂载点（MNT_DETACH：即使仍被占用也延迟卸载）。
@@ -89,6 +121,9 @@ func syscallUnmount(path string) error {
 // fileInfoSys 取 os.FileInfo 底层的 syscall.Stat_t，用于读取设备号。
 // 判断"是否真的是独立挂载点"必须比对设备号，仅看目录存在会被普通目录骗过。
 func fileInfoSys(fi os.FileInfo) (*syscall.Stat_t, bool) {
+	if fi == nil {
+		return nil, false
+	}
 	st, ok := fi.Sys().(*syscall.Stat_t)
 	return st, ok
 }
@@ -332,6 +367,15 @@ func setupContainerDev(rootfs string) error {
 // 先尝试带 size 挂载；内核不支持 size= 时（极老内核或受限环境）退化为
 // 不带参数的默认 tmpfs，而不是让容器启动失败——共享内存"有但大小不可控"
 // 远好于"完全没有"。
+// mountRaw 是通用挂载原语，做成变量以便测试注入（与 mountProcRaw 同一手法）。
+//
+// /dev 下的 tmpfs / devpts / bind 三条路径都各有"参数不被支持就回退"的分支，
+// 这些分支在真实 root 测试里很难稳定触发（取决于宿主内核），因此用注入的方式
+// 让"首次失败、回退成功"与"两次都失败"两条路径都能被普通单测覆盖。
+var mountRaw = func(source, target, fstype string, flags uintptr, data string) error {
+	return syscall.Mount(source, target, fstype, flags, data)
+}
+
 func mountDevShm(rootfs string) error {
 	shm := filepath.Join(rootfs, "dev", "shm")
 	if err := os.MkdirAll(shm, 0o1777); err != nil {
@@ -340,9 +384,9 @@ func mountDevShm(rootfs string) error {
 	size := devShmSize()
 	flags := uintptr(msNoSuid | msNoDev | msNoExec)
 	opts := fmt.Sprintf("size=%d", size)
-	if err := syscall.Mount("tmpfs", shm, "tmpfs", flags, opts); err != nil {
+	if err := mountRaw("tmpfs", shm, "tmpfs", flags, opts); err != nil {
 		// 回退：不带 size 参数再试一次。
-		if err2 := syscall.Mount("tmpfs", shm, "tmpfs", flags, ""); err2 != nil {
+		if err2 := mountRaw("tmpfs", shm, "tmpfs", flags, ""); err2 != nil {
 			return fmt.Errorf("挂载 /dev/shm: %w", err)
 		}
 		slog.Debug("挂载 /dev/shm 时 size 参数不被支持，已回退默认大小",
@@ -359,8 +403,8 @@ func mountDevPts(rootfs string) error {
 		return fmt.Errorf("创建 /dev/pts: %w", err)
 	}
 	flags := uintptr(msNoSuid | msNoDev | msNoExec)
-	if err := syscall.Mount("devpts", pts, "devpts", flags, "newinstance,ptmxmode=0666,mode=0620"); err != nil {
-		if err2 := syscall.Mount("devpts", pts, "devpts", flags, "ptmxmode=0666,mode=0620"); err2 != nil {
+	if err := mountRaw("devpts", pts, "devpts", flags, "newinstance,ptmxmode=0666,mode=0620"); err != nil {
+		if err2 := mountRaw("devpts", pts, "devpts", flags, "ptmxmode=0666,mode=0620"); err2 != nil {
 			return fmt.Errorf("挂载 /dev/pts: %w", err)
 		}
 		slog.Debug("挂载 /dev/pts 时 newinstance 不被支持，已回退")
@@ -392,12 +436,17 @@ func bindHostDevices(rootfs string) error {
 		if _, err := os.Stat(src); err != nil {
 			continue // 宿主没有该设备则跳过
 		}
+		// 占位文件是 bind 的目标挂载点，必须先有父目录（rootfs/dev 通常
+		// 已由调用方创建，但单测与异常 rootfs 里可能缺失）。
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			return fmt.Errorf("创建 /dev 目录: %w", err)
+		}
 		f, err := os.OpenFile(dst, os.O_CREATE, 0o666)
 		if err != nil {
 			return fmt.Errorf("创建设备占位 %s: %w", dst, err)
 		}
 		_ = f.Close()
-		if err := syscall.Mount(src, dst, "", msBind, ""); err != nil {
+		if err := mountRaw(src, dst, "", msBind, ""); err != nil {
 			return fmt.Errorf("bind %s: %w", src, err)
 		}
 	}
@@ -573,8 +622,15 @@ func childCmdline() ([]string, error) {
 
 // envWithoutBoxli 返回剥离 BOXLI_* 内部变量后的容器环境。
 func envWithoutBoxli() []string {
-	env := make([]string, 0, len(os.Environ()))
-	for _, kv := range os.Environ() {
+	return envWithoutBoxliFrom(os.Environ())
+}
+
+// envWithoutBoxliFrom 是 envWithoutBoxli 的纯函数实现，便于单元测试验证
+// 内部变量不会泄漏进容器（BOXLI_NET_* / BOXLI_MOUNT_* / BOXLI_CGROUP_ID
+// 等是引擎与 init 之间的私有信道，不应出现在容器进程的环境里）。
+func envWithoutBoxliFrom(environ []string) []string {
+	env := make([]string, 0, len(environ))
+	for _, kv := range environ {
 		k, _, _ := strings.Cut(kv, "=")
 		if strings.HasPrefix(k, "BOXLI_") {
 			continue

@@ -349,3 +349,54 @@ func TestPlanNamespacesRootNoUserNSIsNotDegraded(t *testing.T) {
 		t.Error("net ns 存在时应使用独立网络")
 	}
 }
+
+// TestResolveNSPlanOnFakeProbe 覆盖 resolveNSPlan 的编排与日志分支：
+// 探测路径本来就是 seam（procSelfNS / maxUserNS），指到假目录即可分别
+// 走通 成功 / 降级 / 致命 三条分支。
+func TestResolveNSPlanOnFakeProbe(t *testing.T) {
+	oldNS, oldMax := procSelfNS, maxUserNS
+	t.Cleanup(func() { procSelfNS, maxUserNS = oldNS, oldMax })
+
+	t.Run("degraded-net", func(t *testing.T) {
+		// 必需 ns 齐全但没有 net，且要求独立网络 → Degraded + Warn 分支。
+		procSelfNS = fakeNSDir(t, "pid", "mnt", "uts", "ipc", "user")
+		maxUserNS = fakeMaxUserNS(t, "1")
+		plan, err := resolveNSPlan(true)
+		if err != nil {
+			// 非 root 时 rootless 判定可能先行报错，两种结果都可接受，
+			// 关键是不得 panic；root 环境下断言降级。
+			if !errors.Is(err, ErrNotRoot) {
+				t.Fatalf("意外错误: %v", err)
+			}
+			return
+		}
+		if !plan.Degraded {
+			t.Error("缺 net 且 wantNet 应 Degraded")
+		}
+	})
+
+	t.Run("fatal-no-ns", func(t *testing.T) {
+		// 空 ns 目录 → ErrNoNamespaces（Error 日志分支）。
+		procSelfNS = fakeNSDir(t)
+		_, err := resolveNSPlan(false)
+		if err == nil || !errors.Is(err, ErrNoNamespaces) {
+			t.Fatalf("应 ErrNoNamespaces, got %v", err)
+		}
+	})
+
+	t.Run("normal", func(t *testing.T) {
+		procSelfNS = fakeNSDir(t, allNS...)
+		maxUserNS = fakeMaxUserNS(t, "100")
+		plan, err := resolveNSPlan(true)
+		switch {
+		case err == nil:
+			if plan.Flags&syscall.CLONE_NEWPID == 0 || plan.Flags&syscall.CLONE_NEWNET == 0 {
+				t.Errorf("plan 缺位: %#x", plan.Flags)
+			}
+		case errors.Is(err, ErrNotRoot):
+			// 非 root 且（该假目录里的）userns 判定未过 → 合法分支。
+		default:
+			t.Fatalf("意外错误: %v", err)
+		}
+	})
+}

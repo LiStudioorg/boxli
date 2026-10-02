@@ -20,7 +20,7 @@ var errNotCgroupV2 = errors.New("cgroups v2 不可用")
 
 // Available 报告 cgroups v2 是否可用（内置 cgroup.controllers 存在即视为 v2）。
 func Available() bool {
-	data, err := os.ReadFile(filepath.Join(CgroupV2Mount, "cgroup.controllers"))
+	data, err := os.ReadFile(filepath.Join(cgroupV2GroupRoot, "cgroup.controllers"))
 	return err == nil && len(data) > 0
 }
 
@@ -28,10 +28,6 @@ func Available() bool {
 // 注意：只有此处 enable 后，boxli/<id>/cpu.max|memory.max|pids.max 等才可写；
 // 若不 enable，cgroup v2 子组写这些限制会 EPERM（此前 --memory/--cpus 静默落空）。
 const controllers = "cpu memory pids"
-
-// cgroupV2GroupRoot 是 v2 模式下 boxli 父组的所在根，测试可注入临时目录。
-// 生产恒为 CgroupV2Mount；与 cgroupV1Roots 一样只作为测试缝存在。
-var cgroupV2GroupRoot = CgroupV2Mount
 
 // enableControllers 在 boxli 父组的 cgroup.subtree_control 里启用容器限制所需
 // 的控制器（cpu/memory/pids）。已在更外层启用时追加挂到本组；幂等、容错。
