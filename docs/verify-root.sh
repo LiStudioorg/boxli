@@ -58,6 +58,24 @@ command -v nft >/dev/null 2>&1 && pass "nft 存在" || fail "缺 nft（apt insta
 command -v ip  >/dev/null 2>&1 && pass "iproute2 存在" || fail "缺 iproute2"
 command -v curl >/dev/null 2>&1 && pass "curl 存在" || fail "缺 curl"
 command -v go  >/dev/null 2>&1 && pass "go 存在（构建 demo 用）" || fail "缺 go（构建 demo 二进制需要）"
+# 关键能力探测：即使 uid=0，若缺 CAP_NET_ADMIN 或 cgroup 只读，容器网络/资源
+# 仍会失败（常见于嵌套容器/用户命名空间/只读 /sys/fs/cgroup）。
+# cap_net_admin 是 capability bit 12 → CapEff 掩码 0x1000。
+capeff=$(awk '/^CapEff:/{print $2}' /proc/self/status 2>/dev/null || echo 0)
+if [ -n "$capeff" ] && [ $(( 16#$capeff & 0x1000 )) -ne 0 ]; then
+  pass "CAP_NET_ADMIN 有效"
+else
+  fail "缺少 CAP_NET_ADMIN（网络（veth/网桥/NFT）无法工作）"
+fi
+# cgroup 可写性：root 下仍可能因 delegation/只读挂载而无法建组。
+prov=/sys/fs/cgroup/.boxli_wt_test
+if [ -e /sys/fs/cgroup/cgroup.controllers ] && touch "$prov" 2>/dev/null; then
+  rm -f "$prov" 2>/dev/null || true
+  pass "cgroup v2 可写"
+else
+  fail "cgroup v2 不可写（/sys/fs/cgroup 只读或被 delegated，资源限制将不可用）"
+fi
+echo "  提示: 若网络/资源仍报 EAGAIN/EPERM，请确认 boxli 为最新编译、且进程确有 CAP_NET_ADMIN 与 cgroup 写权限"
 
 ############ 清理残留（幂等起点） ############
 step "清理残留（旧容器 / cgroup / veth / NAT / hub / demo 文件）"
