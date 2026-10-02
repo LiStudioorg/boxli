@@ -210,6 +210,14 @@ else
   echo "  --- container.log ---"; cat "$BOXLI_HOME/containers/$(cid_of demo)/container.log" 2>/dev/null || true
   echo "  --- boxli0/网桥 IP ---"; ip addr show boxli0 2>/dev/null | grep -E 'inet |state' || true
   echo "  --- nft NAT 相关 ---"; nft list ruleset 2>/dev/null | grep -E '18080|dnat|boxli' | head -10 || true
+  # 定位：直连容器 IP（绕过 DNAT）看是网络通不通，还是 DNAT/ip_forward 问题。
+  cip=$(nft list ruleset 2>/dev/null | grep -oE 'dnat to 172\.18\.[0-9]+\.[0-9]+:80' | head -1 | grep -oE '172\.[0-9.]+' || true)
+  echo "  --- 直连容器 IP: http://$cip/ ---"
+  out2=$(curl -s --max-time 3 "http://$cip/" 2>/dev/null || true)
+  echo "    直连 -> $out2"
+  echo "  --- ip_forward ---"
+  echo "    net.ipv4.ip_forward=$(cat /proc/sys/net/ipv4/ip_forward 2>/dev/null || echo n/a)"
+  echo "    net.ipv4.ip_forward=1 才允许网桥 NAT 转发（curl 走 127.0.0.1 DNAT 时依赖它）"
 fi
 
 ############ D. 资源限制 ############
@@ -231,6 +239,14 @@ step "E. exec 进入容器"
 eout=$("$BOXLI_BIN" exec demo3 /server check 2>&1 || true)
 echo "  exec -> $eout"
 if echo "$eout" | grep -q 'hostname=.*pid='; then pass "exec 进入容器成功"; else fail "exec 失败"; fi
+# 定位 exec：dump init PID 与 ns，并试 nsenter 看是不是 boxli 的问题。
+einit=$(cat "$BOXLI_HOME/containers/$cid3/runtime.json" 2>/dev/null | grep -oE '"initPid": ?[0-9]+' | grep -oE '[0-9]+' | head -1 || true)
+echo "  demo3 initPid=$einit"
+echo "    /proc/$einit/ns/mnt -> $(readlink /proc/$einit/ns/mnt 2>/dev/null || echo '仍不存在/已退出')"
+if command -v nsenter >/dev/null 2>&1 && [ -n "$einit" ] && [ -d "/proc/$einit" ]; then
+  nse=$(nsenter -t "$einit" -m -p -- readlink /proc/self/ns/mnt 2>&1 | head -1 || true)
+  echo "    nsenter -t $einit -m -p -> $nse"
+fi
 
 ############ F. stop/rm 秒退 ############
 step "F. stop / rm 秒退（>5s 判 FAIL）"
