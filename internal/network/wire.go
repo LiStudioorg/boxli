@@ -58,16 +58,23 @@ func AttachVeth(netName, containerID string, childPID int) error {
 func ConfigurePeer(netName, containerID, ip, gateway string, prefix int, hostname string) error {
 	_, peerVeth := vethPair(netName, containerID)
 
-	// 父进程移动 peer 进 netns 与子进程配置存在竞态：重试直到接口出现。
-	deadline := time.Now().Add(5 * time.Second)
-	for {
+	// 父进程移动 peer 进 netns 与子进程配置存在竞态：短促重试直到接口出现。
+	// （历史 bug：LinkByName 对 NUL 结尾的接口名匹配失败，导致这里永远"
+	// 未就绪"；已修复。）
+	const (
+		attempts      = 20
+		retryInterval = 100 * time.Millisecond
+	)
+	found := false
+	for i := 0; i < attempts; i++ {
 		if _, err := netlink.LinkByName(peerVeth); err == nil {
+			found = true
 			break
 		}
-		if time.Now().After(deadline) {
-			return fmt.Errorf("容器侧 veth %s 未就绪: %w", peerVeth, netlink.ErrLinkNotFound)
-		}
-		time.Sleep(20 * time.Millisecond)
+		time.Sleep(retryInterval)
+	}
+	if !found {
+		return fmt.Errorf("容器侧 veth %s 未就绪（%d 次重试后）: %w", peerVeth, attempts, netlink.ErrLinkNotFound)
 	}
 
 	if err := netlink.LinkUp(peerVeth); err != nil {
