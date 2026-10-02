@@ -143,3 +143,40 @@ func TestVolumeMountpoint(t *testing.T) {
 		t.Errorf("挂载点 %q != %q", mp, want)
 	}
 }
+
+// TestVolumeValidAndDrivers 覆盖卷字段校验、驱动名 getter 与默认存储根。
+func TestVolumeValidAndDrivers(t *testing.T) {
+	good := []*Volume{{Name: "datavol", Driver: DriverLocal}, {Name: "m", Driver: DriverTmpfs}}
+	for _, v := range good {
+		if !v.Valid() {
+			t.Errorf("预期合法: %+v", v)
+		}
+	}
+	bad := []*Volume{
+		{Name: "", Driver: DriverLocal},
+		{Name: "a/b", Driver: DriverLocal},
+		{Name: "..x", Driver: DriverLocal},
+		{Name: "x", Driver: "nosuchdrv"},
+		{Name: "x"},
+	}
+	for _, v := range bad {
+		if v.Valid() {
+			t.Errorf("预期非法: %+v", v)
+		}
+	}
+	// 驱动名 getter。
+	if dt := drv(DriverTmpfs); dt != nil && dt.Name() != DriverTmpfs {
+		t.Errorf("tmpfs driver Name()=%q", dt.Name())
+	}
+	// checkDriver。
+	if err := checkDriver(DriverLocal); err != nil {
+		t.Errorf("checkDriver(local)=%v", err)
+	}
+	if err := checkDriver("nope"); err == nil {
+		t.Error("checkDriver(unknown) 应报错")
+	}
+	// 默认存储根非空。
+	if r, err := defaultStoreRootV(); err != nil || r == "" {
+		t.Errorf("defaultStoreRootV=%q err=%v", r, err)
+	}
+}
