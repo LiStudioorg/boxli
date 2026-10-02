@@ -4,7 +4,7 @@ Boxli 是一个用 Go 编写的轻量级容器引擎：常驻内存 10–20 MiB�
 
 ## 特性
 
-- 🪶 **极轻**：运行时内存目标 10–20 MiB，纯 Go 无 CGO，单个静态二进制。
+- 🪶 **极轻**：运行时内存目标 10–20 MiB，单个静态二进制；除可选的 `internal/execns`（`exec` 进入容器挂载命名空间）外全部为纯 Go。
 - 🧩 **自研镜像格式**：`.boxli` = 分层 gzip tar + 自研 `index.json`，简单、可逐层审计。
 - 📱 **平台**：Linux 服务器、Android（有 Root）、macOS；Android 无 Root 官方不支持（见《Android 支持策略》）。
 - 🏗 **多架构**：amd64 / arm64 / 386 / riscv64 等同一条命令交叉编译。
@@ -14,7 +14,7 @@ Boxli 是一个用 Go 编写的轻量级容器引擎：常驻内存 10–20 MiB�
 
 ## 快速开始
 
-> Boxli 已进入 **阶段 5（v0.5.0）**：镜像、运行时、网络、卷、资源限制、`exec`、Hub 分发均落地，且 `boxli build` 已真正构建并导入镜像、`compose up/scale` 真正创建容器。除标注"开发中"的命令外均为当前真实能力。
+> Boxli 已进入 **v0.6.0**：镜像、运行时、网络、卷、资源限制、`exec`、Hub 分发均落地，`boxli build` 真正构建并导入镜像、`compose up/scale` 真正创建容器；v0.6.0 补齐了 cgroup 限额真正生效、`exec` 进入全部命名空间、卷 `:ro` 只读、同名并发创建的原子性，并修复了 netlink 组包缺陷。真机验收与审计见 [docs/test-report-v0.6.0.md](docs/test-report-v0.6.0.md)、[docs/audit-v0.6.0.md](docs/audit-v0.6.0.md)。
 
 ```bash
 boxli build -t demo:v1 .                            # 根据 Boxfile 构建 .boxli 并自动导入
@@ -109,6 +109,16 @@ boxli exec -e FOO=bar -w /data -u 1000 myapp /bin/env   # 环境变量 / 工作�
 `exec` 通过 setns 进入容器的 mnt/uts/ipc/net/pid 命名空间后执行命令；
 需要 root。交互模式可带 `-i`（保持 stdin）与 `-t`（伪终端）。
 
+> **构建说明**：纯 Go 无法 `setns(CLONE_NEWNS)`（见 Go issue #9091），因此进入容器
+> **挂载命名空间**这一步由可选的 cgo 组件 `internal/execns` 完成。这是全仓库唯一的 cgo
+> 代码，且仅在 Linux + 启用 cgo 时编译：
+>
+> - `go build -o boxli .`（默认，Linux + cgo 可用）→ `exec` 功能完整。
+> - `CGO_ENABLED=0 go build -o boxli .` 或 `-tags nocgo_exec` → 自动走纯 Go stub，
+>   其余功能完全不受影响，只有 `boxli exec` 会返回明确的"未启用 cgo 支持"错误。
+> - 其他平台（darwin / android）始终使用 stub，`exec` 返回未支持错误。
+> - 交叉编译到 linux/arm64 需要对应架构的 C 工具链；没有时可加 `-tags nocgo_exec`。
+
 ## 自建 Hub 服务（hub serve）
 
 ```bash
@@ -142,6 +152,29 @@ boxli boot disable                       # 移除系统服务
 | Android 有 Root | 完整支持 |
 | Android 无 Root | 官方不支持（用户可自行在 proot 等环境中运行，不保证可用性） |
 | macOS | 通过轻量 VM |
+
+### 平台能力矩阵（v0.6.0 实测）
+
+| 能力 | Linux（root） | Linux（非 root） | Android（root） | macOS | `CGO_ENABLED=0` 构建 |
+| --- | --- | --- | --- | --- | --- |
+| 镜像 / 卷 / `build` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `run` / `stop` / `ps` / `rm` | ✅ | ✅ | ✅ | — | ✅ |
+| 网络（bridge / veth / NAT / DNS） | ✅ | 仅 host / none | ✅ | — | ✅ |
+| 资源限制（cgroup v2） | ✅ | ⚠️ 视 cgroup 委派而定 | ✅ | — | ✅ |
+| `exec` 进入命名空间 | ✅ | ❌（需 CAP_SYS_ADMIN） | ✅ | ❌ | ❌ 返回明确错误 |
+| 卷 `:ro` 只读 | ✅ | ✅ | ✅ | — | ✅ |
+
+### 已知限制（v0.6.0）
+
+- **`-p` 端口映射依赖宿主的 FORWARD 链**：若宿主 `iptables` FORWARD 策略为 `DROP`
+  且没有放行 boxli 网桥的规则（部分云主机、启用 rootless-docker 的机器如此），
+  `-p` 发布的端口从宿主外部不可达。这与 Docker 在同一台机器上的行为一致；此时
+  boxli 会打印告警，容器间通信与出网不受影响。可用 `boxli network ls` 确认网桥状态。
+- **`exec` 需要 cgo 构建**：见上文《进入运行中容器（exec）》的构建说明。
+- **层缓存不回收**：`boxli rm` 只删容器目录，共享的 `layers/sha256/<hex>/fs` 缓存
+  跨容器复用且不会自动清理（引用计数尚未实现）。
+- **未实现的资源能力显式报错**：`--storage`、`--gpu`、`--npu`、`--network-bandwidth`
+  在 CLI 层直接拒绝，不会静默降级。
 
 ### Android 支持策略
 
