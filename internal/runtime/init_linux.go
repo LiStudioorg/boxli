@@ -93,6 +93,120 @@ func fileInfoSys(fi os.FileInfo) (*syscall.Stat_t, bool) {
 	return st, ok
 }
 
+// hostProcMountInfo 是宿主 /proc 自检所需的路径，做成变量以便测试注入。
+var hostProcMountInfo = "/proc/self/mountinfo"
+
+// parseHidePID 从 mountinfo 内容里解析宿主 /proc 的 hidepid 值。
+//
+// 返回 (值, 是否找到, 是否解析成功)。三条信息必须分开，因为决策不同：
+//   - 找不到 hidepid 选项 → 未设置，调用方不传参数；
+//   - 找到但值非法 → 视为解析失败，调用方不传参数（保守）；
+//   - 找到且合法 → 用该值判断是否需要显式覆盖。
+//
+// mountinfo 的字段布局（见 proc(5)）：
+//
+//	36 35 98:0 /mnt1 /mnt2 rw,noatime master:1 - ext3 /dev/root rw,errors=continue
+//	①  ②  ③     ④     ⑤     ⑥                    ⑦  ⑧      ⑨        ⑩
+//
+// 第 5 个字段（索引 4）是挂载点，第 6 个（索引 5）是 per-mount 选项，
+// hidepid 属于 per-mount 选项，因此在索引 5 里查找。
+//
+// 为什么解析 /proc/self/mountinfo 而不是 /proc/mounts：mounts 只给出
+// 文件系统级的挂载选项（superblock options），而 hidepid 是 per-mount
+// 选项，只有 mountinfo 才完整呈现。
+func parseHidePID(mountinfo string) (int, bool, bool) {
+	for _, line := range strings.Split(mountinfo, "\n") {
+		fields := strings.Fields(line)
+		// 至少需要到 " - " 分隔符前的 6 个字段。
+		if len(fields) < 6 {
+			continue
+		}
+		if fields[4] != "/proc" {
+			continue
+		}
+		for _, opt := range strings.Split(fields[5], ",") {
+			val, ok := strings.CutPrefix(opt, "hidepid=")
+			if !ok {
+				continue
+			}
+			n, err := strconv.Atoi(val)
+			if err != nil {
+				return 0, true, false // 找到了但值非法
+			}
+			return n, true, true
+		}
+		// 找到 /proc 行但其中没有 hidepid → 未设置。
+		return 0, false, true
+	}
+	// 没有 /proc 行（异常环境）→ 视为未设置，不阻断。
+	return 0, false, true
+}
+
+// procMountOptions 决定容器 /proc 应使用的挂载参数。
+//
+// 决策表（与设计一致）：
+//
+//	宿主 hidepid 未设置   → ""（用内核默认）
+//	宿主 hidepid = 0      → ""（已经是最宽松，无需覆盖）
+//	宿主 hidepid = 1 或 2 → "hidepid=0"（否则容器内看不到自己的进程）
+//	解析失败              → ""（保守，且记日志不阻断）
+//
+// 返回的字符串直接作为 mount(2) 的 data 参数（空串表示不传）。
+func procMountOptions(mountinfo string) string {
+	hidepid, found, ok := parseHidePID(mountinfo)
+	if !ok {
+		slog.Debug("解析宿主 /proc hidepid 失败，容器将使用默认挂载参数")
+		return ""
+	}
+	if !found {
+		return ""
+	}
+	if hidepid > 0 {
+		return "hidepid=0"
+	}
+	return ""
+}
+
+// mountContainerProc 在 rootfs/proc 挂载绑定当前 PID namespace 的 procfs。
+//
+// 先按宿主 hidepid 情况决定参数；若带参数挂载失败（内核不支持 hidepid，
+// 或受限环境拒绝），回退为不带参数再试一次。两次都失败才报错——这样
+// 既能在需要时修正 hidepid，又不会因参数不被支持而阻断容器启动。
+func mountContainerProc(rootfs string) error {
+	target := filepath.Join(rootfs, "proc")
+	opts := procMountOptions(readHostMountInfo())
+
+	if opts != "" {
+		if err := mountProcRaw(target, opts); err != nil {
+			slog.Debug("带 hidepid 参数挂载 /proc 失败，回退为默认参数",
+				slog.String("opts", opts), slog.Any("err", err))
+		} else {
+			return nil
+		}
+	}
+	if err := mountProcRaw(target, ""); err != nil {
+		return fmt.Errorf("挂载 /proc: %w", err)
+	}
+	return nil
+}
+
+// mountProcRaw 是 mountContainerProc 使用的挂载原语，做成变量以便测试注入
+// 一个假的挂载函数来验证回退逻辑，而不必真的改宿主挂载表。
+var mountProcRaw = func(target, opts string) error {
+	return syscall.Mount("proc", target, "proc", 0, opts)
+}
+
+// readHostMountInfo 读取宿主 mountinfo；失败返回空串（调用方按"未设置"处理）。
+func readHostMountInfo() string {
+	data, err := os.ReadFile(hostProcMountInfo)
+	if err != nil {
+		slog.Debug("读取宿主 mountinfo 失败，容器 /proc 使用默认参数",
+			slog.String("path", hostProcMountInfo), slog.Any("err", err))
+		return ""
+	}
+	return string(data)
+}
+
 // setupContainerDev 在 rootfs/dev 下装配容器所需的设备环境。
 //
 // 顺序有讲究：
@@ -253,8 +367,10 @@ func RunInit() error {
 	// 4. 先挂 procfs（早于 pivot_root）。部分环境（如嵌套容器）在 pivot 并卸载旧根后
 	//    拒绝再建 proc 超块；pivot 前挂载得到的是绑定本 PID namespace 的全新 procfs，
 	//    随 rootfs 一起进入新根，语义完全等价。
-	if err := syscall.Mount("proc", filepath.Join(rootfs, "proc"), "proc", 0, ""); err != nil {
-		return fmt.Errorf("挂载 /proc（pivot 前）: %w", err)
+	//    参数按宿主 hidepid 情况决定：宿主为 hidepid=1/2 时显式覆盖为 0，
+	//    否则容器内 ps 看不到自己的进程（Android 有设备默认 hidepid=2）。
+	if err := mountContainerProc(rootfs); err != nil {
+		return err
 	}
 	// 5. pivot_root(".", oldRoot)。注意：不做 chroot——pivot_root 的内核约束是
 	//    new_root 必须位于当前 root 之下且不等于当前 root，chroot 反而使其失败。
