@@ -8,8 +8,8 @@ package runtime
 import (
 	"errors"
 	"fmt"
+	"github.com/LiStudioorg/boxli/internal/execns"
 	"os"
-	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -21,6 +21,10 @@ import (
 
 // Exec 在目标容器的命名空间里执行命令并等待退出，返回退出码（信号死亡时
 // 128+signum）。需要 root（CAP_SYS_ADMIN）以 setns 进入他人命名空间。
+//
+// setns(mount namespace) 在纯 Go 下会失败（Go issue #9091），因此进入容器
+// 命名空间由 internal/execns 完成：cgo 构建时用 fork 出的 C 单线程子进程
+// setns+exec；无 cgo 构建返回 ErrNoCgoExec。
 func Exec(o *ExecOptions) (int, error) {
 	if err := o.validate(); err != nil {
 		return -1, err
@@ -31,58 +35,19 @@ func Exec(o *ExecOptions) (int, error) {
 	if os.Geteuid() != 0 {
 		return -1, ErrNotRoot
 	}
-	// setns 是线程级操作：锁定避免 Go 调度迁移线程。
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
-	// 打开全部命名空间 fd。
-	nsFds := map[string]int{}
-	openNS := func(name string) (int, error) {
-		fp := filepath.Join("/proc", strconv.Itoa(o.TargetPID), "ns", name)
-		fd, err := syscall.Open(fp, syscall.O_RDONLY|syscall.O_CLOEXEC, 0)
-		if err != nil {
-			return -1, fmt.Errorf("打开命名空间 %s: %w", fp, err)
-		}
-		nsFds[name] = fd
-		return fd, nil
-	}
-	for _, name := range []string{"mnt", "uts", "ipc", "net", "pid"} {
-		if _, err := openNS(name); err != nil {
-			closeNSFds(nsFds)
-			return -1, err
-		}
-	}
-	defer closeNSFds(nsFds)
-
-	// 先进入 mnt/uts/ipc/net，再 pid：真实依赖（rootless 的 user ns
-	// 逻辑复杂，此处按 root 容器处理；非 root 已在上方栏）。
-	for _, name := range []string{"mnt", "uts", "ipc", "net"} {
-		if err := setns(nsFds[name], nsFlags(name)); err != nil {
-			return -1, nsErr(name, err)
-		}
-	}
-	// 进入 PID 命名空间：此后 fork 出的子进程才会落入容器 PID namespace。
-	if err := setns(nsFds["pid"], syscall.CLONE_NEWPID); err != nil {
-		return -1, nsErr("pid", err)
-	}
-
-	// 工作目录（此刻已进入容器 mount namespace，按容器内路径解析）。
-	if o.Workdir != "" {
-		if err := os.Chdir(o.Workdir); err != nil {
-			return -1, fmt.Errorf("chdir %s: %w", o.Workdir, err)
-		}
-	}
-	// 运行身份：setgroups 必须先于 setgid/setuid。
-	if err := applyExecUser(o.User); err != nil {
-		return -1, err
+	if !execns.Enabled() {
+		return -1, fmt.Errorf("exec: %w", execns.ErrNoCgoExec)
 	}
 
 	// 决定三个 stdio fd。
 	stdin := firstNonNil(o.Stdin, os.Stdin)
 	stdout := firstNonNil(o.Stdout, os.Stdout)
 	stderr := firstNonNil(o.Stderr, os.Stderr)
-	files := []uintptr{stdin.Fd(), stdout.Fd(), stderr.Fd()}
+	inFd := int(stdin.Fd())
+	outFd := int(stdout.Fd())
+	errFd := int(stderr.Fd())
 
+	// TTY：开伪终端，slave 作为子进程 stdio，master 由本进程转发给调用方。
 	var master *os.File
 	if o.TTY {
 		m, s, err := openpty()
@@ -90,45 +55,22 @@ func Exec(o *ExecOptions) (int, error) {
 			return -1, fmt.Errorf("openpty: %w", err)
 		}
 		master = m
-		files = []uintptr{s.Fd(), s.Fd(), s.Fd()}
-		defer func() {
-			_ = s.Close()
-			if master != nil {
-				_ = master.Close()
-			}
-		}()
+		defer func() { _ = s.Close(); _ = master.Close() }()
+		inFd, outFd, errFd = int(s.Fd()), int(s.Fd()), int(s.Fd())
 	}
 
-	// ForkExec：子进程直接 exec 目标命令，落入容器 PID 命名空间。
-	pid, err := syscall.ForkExec(o.Cmd[0], o.Cmd, &syscall.ProcAttr{
-		Env:   o.Env,
-		Files: files,
-	})
+	pid, err := execns.Enter(o.TargetPID, o.Workdir, o.User, o.Env, inFd, outFd, errFd, o.Cmd)
 	if err != nil {
-		if master != nil {
-			_ = master.Close()
-		}
-		return -1, fmt.Errorf("exec %s: %w", o.Cmd[0], err)
+		return -1, err
 	}
-
 	if master != nil {
 		relayLoop(master)
 	}
-
-	var ws syscall.WaitStatus
-	for {
-		wpid, err := syscall.Wait4(pid, &ws, 0, nil)
-		if err == syscall.EINTR {
-			continue
-		}
-		if err != nil {
-			return -1, fmt.Errorf("wait exec: %w", err)
-		}
-		if wpid == pid {
-			break
-		}
+	code := execns.Wait(pid)
+	if code < 0 {
+		return -1, fmt.Errorf("exec: 等待子进程失败")
 	}
-	return execExitCode(ws), nil
+	return code, nil
 }
 
 // validate 检查 exec 选项。
