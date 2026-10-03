@@ -63,18 +63,18 @@ type VolumeManager struct {
 // ErrVolumeData is a sentinel-less helper placeholder.
 var (
 	// ErrVolumeExists 表示同名卷已存在。
-	ErrVolumeExists = errors.New("boxli/storage: 同名卷已存在")
+	ErrVolumeExists = errors.New("licore/storage: 同名卷已存在")
 	// ErrVolumeNotFound 表示按名字找不到卷。
-	ErrVolumeNotFound = errors.New("boxli/storage: 卷不存在")
+	ErrVolumeNotFound = errors.New("licore/storage: 卷不存在")
 	// ErrVolumeInUse 表示卷正被容器引用，不能删除。
-	ErrVolumeInUse = errors.New("boxli/storage: 卷正在被使用")
+	ErrVolumeInUse = errors.New("licore/storage: 卷正在被使用")
 	// ErrVolumeBad 表示卷定义非法。
-	ErrVolumeBad = errors.New("boxli/storage: 卷定义非法")
+	ErrVolumeBad = errors.New("licore/storage: 卷定义非法")
 	// ErrBadDriver 表示驱动不受支持。
-	ErrBadDriver = errors.New("boxli/storage: 卷驱动不受支持")
+	ErrBadDriver = errors.New("licore/storage: 卷驱动不受支持")
 )
 
-// NewVolumeManager 返回卷管理器。root 为空沿用 $BOXLI_HOME → ~/.boxli。
+// NewVolumeManager 返回卷管理器。root 为空沿用 $LICORE_HOME → ~/.licore。
 func NewVolumeManager(root string) (*VolumeManager, error) {
 	if root == "" {
 		r, err := defaultStoreRootV()
@@ -242,13 +242,13 @@ func (m *VolumeManager) writeMeta(v *Volume) error {
 }
 
 func defaultStoreRootV() (string, error) {
-	root := os.Getenv("BOXLI_HOME")
+	root := os.Getenv("LICORE_HOME")
 	if root == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return "", fmt.Errorf("确定数据目录失败: %w", err)
 		}
-		root = filepath.Join(home, ".boxli")
+		root = filepath.Join(home, ".licore")
 	}
 	return root, nil
 }

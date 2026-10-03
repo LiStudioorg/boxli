@@ -85,7 +85,7 @@ func TestMountDevShmBothFail(t *testing.T) {
 	}
 }
 
-// TestMountDevShmHonorsEnvSize 覆盖 BOXLI_SHM_SIZE 传导到挂载参数。
+// TestMountDevShmHonorsEnvSize 覆盖 LICORE_SHM_SIZE 传导到挂载参数。
 func TestMountDevShmHonorsEnvSize(t *testing.T) {
 	t.Setenv(envShmSize, "16m")
 	rootfs := t.TempDir()
@@ -249,7 +249,7 @@ func TestFileinfoSysAndUnmountHelpers(t *testing.T) {
 	}
 }
 
-// TestDevShmSizeSuffixParsing 覆盖 BOXLI_SHM_SIZE 的后缀形态。
+// TestDevShmSizeSuffixParsing 覆盖 LICORE_SHM_SIZE 的后缀形态。
 // 用户最自然的写法是 "16m" 而不是 "16777216"，若只收裸字节数，写 "16m"
 // 会得到静默的默认值——这是最糟的失败模式（配置看着生效，其实没有）。
 func TestDevShmSizeSuffixParsing(t *testing.T) {

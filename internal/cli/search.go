@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// newSearchCommand 实现 `boxli search QUERY`：按关键字搜索 Hub 上的镜像。
+// newSearchCommand 实现 `licore search QUERY`：按关键字搜索 Hub 上的镜像。
 func newSearchCommand(out io.Writer) *cobra.Command {
 	var hubFlag, dataDir string
 	cmd := &cobra.Command{
@@ -22,7 +22,7 @@ func newSearchCommand(out io.Writer) *cobra.Command {
 			base := hubBaseURL(hubFlag)
 			c := newHubClient(base, dataDir)
 			if c.Token == "" {
-				return fmt.Errorf("search: 未登录 %s，请先 boxli login", base)
+				return fmt.Errorf("search: 未登录 %s，请先 licore login", base)
 			}
 			res, err := c.Search(args[0])
 			if err != nil {
@@ -40,7 +40,7 @@ func newSearchCommand(out io.Writer) *cobra.Command {
 			return w.Flush()
 		},
 	}
-	cmd.Flags().StringVar(&hubFlag, "hub", "", "Hub 地址（默认 $BOXLI_HUB 或 http://127.0.0.1:3727）")
-	cmd.Flags().StringVar(&dataDir, "data-dir", "", "数据目录（默认 $BOXLI_HOME 或 ~/.boxli）")
+	cmd.Flags().StringVar(&hubFlag, "hub", "", "Hub 地址（默认 $LICORE_HUB 或 http://127.0.0.1:3727）")
+	cmd.Flags().StringVar(&dataDir, "data-dir", "", "数据目录（默认 $LICORE_HOME 或 ~/.licore）")
 	return cmd
 }

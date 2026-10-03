@@ -17,16 +17,16 @@ import (
 // volumeDataDir 由 volume 父命令的 persistent --data-dir 写入，子命令读取。
 var volumeDataDir string
 
-// newVolumeCommand 实现 `boxli volume` 命令树：命名卷的创建、列举、
+// newVolumeCommand 实现 `licore volume` 命令树：命名卷的创建、列举、
 // 检查、删除、清理与快照/克隆。
 func newVolumeCommand(out io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "volume",
 		Aliases: []string{"vol"},
 		Short:   "管理数据卷（local / tmpfs）",
-		Long:    "管理 Boxli 的命名数据卷：创建、列举、检查、删除、清理，以及快照与克隆。",
+		Long:    "管理 LiCore 的命名数据卷：创建、列举、检查、删除、清理，以及快照与克隆。",
 	}
-	cmd.PersistentFlags().StringVar(&volumeDataDir, "data-dir", "", "数据目录（默认 $BOXLI_HOME 或 ~/.boxli）")
+	cmd.PersistentFlags().StringVar(&volumeDataDir, "data-dir", "", "数据目录（默认 $LICORE_HOME 或 ~/.licore）")
 	cmd.AddCommand(newVolumeCreate(out))
 	cmd.AddCommand(newVolumeLs(out))
 	cmd.AddCommand(newVolumeInspect(out))

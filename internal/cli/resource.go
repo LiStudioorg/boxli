@@ -13,7 +13,7 @@ import (
 	"github.com/LiStudioorg/licore/internal/store"
 )
 
-// newResourceCommand 实现 `boxli resource`：资源能力的诊断与查询。
+// newResourceCommand 实现 `licore resource`：资源能力的诊断与查询。
 func newResourceCommand(out io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "resource",
@@ -33,7 +33,7 @@ func newResourceInfo(out io.Writer) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			fmt.Fprintln(out, "资源能力诊断:")
 			fmt.Fprintf(out, "  cgroups v2 可用:   %v (%s)\n", resource.Available(), resource.CgroupV2Mount)
-			fmt.Fprintf(out, "  boxli cgroup 组:   %s\n", resource.BoxliGroup)
+			fmt.Fprintf(out, "  licore cgroup 组:   %s\n", resource.LiCoreGroup)
 			fmt.Fprintln(out, "  已实现的限制：")
 			fmt.Fprintln(out, "    CPU 限制:          --cpus/--cpu-shares/--cpuset-cpus")
 			fmt.Fprintln(out, "    内存限制:          --memory/--memory-swap/--memory-reservation")
@@ -48,7 +48,7 @@ func newResourceInfo(out io.Writer) *cobra.Command {
 	}
 }
 
-// newUpdateCommand 实现 `boxli update`：动态调整已运行容器的资源限制。
+// newUpdateCommand 实现 `licore update`：动态调整已运行容器的资源限制。
 func newUpdateCommand(out io.Writer) *cobra.Command {
 	var dataDir string
 	var memoryMB, memorySwapMB, pidsLimit, blkioWeight int
@@ -82,7 +82,7 @@ func newUpdateCommand(out io.Writer) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&dataDir, "data-dir", "", "数据目录（默认 $BOXLI_HOME 或 ~/.boxli）")
+	cmd.Flags().StringVar(&dataDir, "data-dir", "", "数据目录（默认 $LICORE_HOME 或 ~/.licore）")
 	cmd.Flags().IntVar(&memoryMB, "memory", 0, "内存上限（MiB，0=不变）")
 	cmd.Flags().IntVar(&memorySwapMB, "memory-swap", 0, "内存+swap 总上限（MiB，-1=不限 swap）")
 	cmd.Flags().Float64Var(&cpus, "cpus", 0, "CPU 配额（核数，0=不变）")

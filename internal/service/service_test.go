@@ -30,12 +30,12 @@ func (f *fakeRunner) Output(_ context.Context, name string, args ...string) (str
 			fmt.Errorf("%s: %w（Interactive authentication required.）", key, err)
 	}
 	switch {
-	case strings.HasSuffix(key, "is-enabled boxli.service"):
+	case strings.HasSuffix(key, "is-enabled licore.service"):
 		if f.disabled {
 			return "not-found\n", errors.New("exit status 1")
 		}
 		return "enabled\n", nil
-	case strings.HasSuffix(key, "is-active boxli.service"):
+	case strings.HasSuffix(key, "is-active licore.service"):
 		return "active\n", nil
 	}
 	return "", nil
@@ -53,8 +53,8 @@ func opts(t *testing.T, r Runner) *Options {
 	return &Options{
 		UnitDir:  t.TempDir(),
 		Runner:   r,
-		ExecPath: "/usr/local/bin/boxli",
-		DataDir:  "/data/boxli",
+		ExecPath: "/usr/local/bin/licore",
+		DataDir:  "/data/licore",
 	}
 }
 
@@ -65,13 +65,13 @@ func TestUnitContent(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := "[Unit]\n" +
-		"Description=Boxli container engine\n" +
+		"Description=LiCore container engine\n" +
 		"After=network.target\n\n" +
 		"[Service]\n" +
 		"Type=oneshot\n" +
 		"RemainAfterExit=yes\n" +
-		"ExecStart=/usr/local/bin/boxli boot --data-dir /data/boxli\n" +
-		"ExecStop=/usr/local/bin/boxli shutdown --data-dir /data/boxli\n\n" +
+		"ExecStart=/usr/local/bin/licore boot --data-dir /data/licore\n" +
+		"ExecStop=/usr/local/bin/licore shutdown --data-dir /data/licore\n\n" +
 		"[Install]\n" +
 		"WantedBy=multi-user.target\n"
 	if got != want {
@@ -94,14 +94,14 @@ func TestEnableWritesFileAndRegisters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unit 文件未落盘: %v", err)
 	}
-	if !strings.Contains(string(data), "ExecStart=/usr/local/bin/boxli boot") {
+	if !strings.Contains(string(data), "ExecStart=/usr/local/bin/licore boot") {
 		t.Fatalf("unit 内容错误: %s", data)
 	}
 	wantCalls := [][]string{
 		{"systemctl", "daemon-reload"},
-		{"systemctl", "enable", "boxli.service"},
+		{"systemctl", "enable", "licore.service"},
 	}
-	if len(fr.calls) != 2 || fr.calls[0][1] != "daemon-reload" || fr.calls[1][2] != "boxli.service" {
+	if len(fr.calls) != 2 || fr.calls[0][1] != "daemon-reload" || fr.calls[1][2] != "licore.service" {
 		t.Fatalf("systemctl 调用序列错误: %v 期望 %v", fr.calls, wantCalls)
 	}
 }
@@ -132,7 +132,7 @@ func TestEnablePermissionDenied(t *testing.T) {
 	if !errors.Is(err, ErrNotPermitted) {
 		t.Fatalf("systemctl 认证失败应包装 ErrNotPermitted: %v", err)
 	}
-	if !strings.Contains(err.Error(), "sudo boxli boot enable") {
+	if !strings.Contains(err.Error(), "sudo licore boot enable") {
 		t.Fatalf("错误信息应给出手动命令: %v", err)
 	}
 }
@@ -142,7 +142,7 @@ func TestEnableUnitDirPermission(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root 下无法模拟目录权限")
 	}
-	o := &Options{UnitDir: "/proc/definitely-not-writable", Runner: &fakeRunner{}, ExecPath: "/usr/bin/boxli"}
+	o := &Options{UnitDir: "/proc/definitely-not-writable", Runner: &fakeRunner{}, ExecPath: "/usr/bin/licore"}
 	_, err := Enable(context.Background(), o)
 	if err == nil {
 		t.Fatal("写不可写目录应失败")
@@ -166,7 +166,7 @@ func TestDisableRemovesFile(t *testing.T) {
 	for _, c := range fr.calls {
 		joined = append(joined, strings.Join(c, " "))
 	}
-	if !strings.Contains(strings.Join(joined, "|"), "systemctl disable --now boxli.service") ||
+	if !strings.Contains(strings.Join(joined, "|"), "systemctl disable --now licore.service") ||
 		!strings.Contains(strings.Join(joined, "|"), "systemctl daemon-reload") {
 		t.Fatalf("disable 调用序列错误: %v", joined)
 	}
@@ -221,10 +221,10 @@ func TestStatusUnitMissing(t *testing.T) {
 
 func TestUnitPathJoinsDir(t *testing.T) {
 	o := &Options{UnitDir: "/tmp/x"}
-	if got := o.UnitPath(); got != filepath.Join("/tmp/x", "boxli.service") {
+	if got := o.UnitPath(); got != filepath.Join("/tmp/x", "licore.service") {
 		t.Fatalf("UnitPath = %s", got)
 	}
-	if (&Options{}).UnitPath() != "/etc/systemd/system/boxli.service" {
+	if (&Options{}).UnitPath() != "/etc/systemd/system/licore.service" {
 		t.Fatal("默认路径错误")
 	}
 }
@@ -233,7 +233,7 @@ func TestFoldUnitState(t *testing.T) {
 	cases := map[string]string{
 		"enabled\n": "enabled",
 		"disabled":  "disabled",
-		"Failed to get unit file state for boxli.service: No such file or directory": "not-found",
+		"Failed to get unit file state for licore.service: No such file or directory": "not-found",
 		"":                      "not-found",
 		"static\n":              "static",
 		"some weird error text": "unknown",

@@ -15,7 +15,7 @@ import (
 	"github.com/LiStudioorg/licore/internal/store"
 )
 
-// newStatsCommand 实现 `boxli stats`：读取容器 cgroup 用量并实时展示。
+// newStatsCommand 实现 `licore stats`：读取容器 cgroup 用量并实时展示。
 // 无参数时列全部容器；也可指定容器名/ID（支持前缀）。
 func newStatsCommand(out io.Writer) *cobra.Command {
 	var dataDir string
@@ -77,7 +77,7 @@ func newStatsCommand(out io.Writer) *cobra.Command {
 			return tw.Flush()
 		},
 	}
-	cmd.Flags().StringVar(&dataDir, "data-dir", "", "数据目录（默认 $BOXLI_HOME 或 ~/.boxli）")
+	cmd.Flags().StringVar(&dataDir, "data-dir", "", "数据目录（默认 $LICORE_HOME 或 ~/.licore）")
 	cmd.Flags().BoolVarP(&all, "all", "a", false, "含已停止容器")
 	return cmd
 }

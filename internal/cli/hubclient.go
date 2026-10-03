@@ -12,7 +12,7 @@ import (
 	"github.com/LiStudioorg/licore/hub"
 )
 
-// 默认 Hub 地址：优先 --hub 标志，其次 $BOXLI_HUB，最后本地开发默认地址。
+// 默认 Hub 地址：优先 --hub 标志，其次 $LICORE_HUB，最后本地开发默认地址。
 const defaultHubURL = "http://127.0.0.1:3727"
 
 // hubBaseURL 解析 Hub 服务端地址。
@@ -20,22 +20,22 @@ func hubBaseURL(flagVal string) string {
 	if flagVal != "" {
 		return flagVal
 	}
-	if v := os.Getenv("BOXLI_HUB"); v != "" {
+	if v := os.Getenv("LICORE_HUB"); v != "" {
 		return v
 	}
 	return defaultHubURL
 }
 
-// hubDataRoot 返回数据目录默认根（$BOXLI_HOME → ~/.boxli），与 store.Open 一致。
+// hubDataRoot 返回数据目录默认根（$LICORE_HOME → ~/.licore），与 store.Open 一致。
 func hubDataRoot(dataDir string) string {
 	if dataDir != "" {
 		return dataDir
 	}
-	if v := os.Getenv("BOXLI_HOME"); v != "" {
+	if v := os.Getenv("LICORE_HOME"); v != "" {
 		return v
 	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".boxli")
+	return filepath.Join(home, ".licore")
 }
 
 // hubAuthFile 返回 Hub 凭证文件路径（令牌绑定到具体 Hub 地址）。

@@ -14,8 +14,8 @@ import (
 
 // 规范常量，见 docs/image-spec.md。
 const (
-	MediaTypeManifest = "application/x.boxli.manifest+json"
-	SpecVersionV1     = "boxli/image-spec/v1"
+	MediaTypeManifest = "application/x.licore.manifest+json"
+	SpecVersionV1     = "licore/image-spec/v1"
 	SchemaVersionV1   = 1
 
 	// MaxIndexBytes 是 index.json 的体积上限（1 MiB）。
@@ -68,7 +68,7 @@ type Config struct {
 	Labels     map[string]string `json:"labels"`
 }
 
-// Manifest 对应 .boxli 归档内的 index.json（规范 3.1）。
+// Manifest 对应 .licore 归档内的 index.json（规范 3.1）。
 type Manifest struct {
 	MediaType     string            `json:"mediaType"`
 	SpecVersion   string            `json:"specVersion"`
@@ -198,7 +198,7 @@ func validateDigest(s string) error {
 }
 
 func hasAllowedAnnotationPrefix(k string) bool {
-	return strings.HasPrefix(k, "org.boxli.") || strings.HasPrefix(k, "dev.boxli.")
+	return strings.HasPrefix(k, "org.licore.") || strings.HasPrefix(k, "dev.licore.")
 }
 
 // SafeArchivePath 校验归档条目名：必须是干净的相对路径，

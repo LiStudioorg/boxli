@@ -1,7 +1,7 @@
 // Copyright (C) 2026 LiStudioorg
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Package network 实现 Boxli 自研容器网络：容器间通信与对外 NAT 出口，
+// Package network 实现 LiCore 自研容器网络：容器间通信与对外 NAT 出口，
 // 以及 bridge / host / none 三种网络模式的创建、管理与端口映射。
 // 阶段 3 落地于本包；非 Linux 平台由 *_nonlinux.go 提供占位（返回
 // ErrUnsupported），保证全仓库可交叉编译。
@@ -41,11 +41,11 @@ const (
 	ModeNone   NetMode = "none"
 )
 
-// ParseNetMode 把网络名/模式串规整为接入模式：""|boxli0|bridge → bridge；
+// ParseNetMode 把网络名/模式串规整为接入模式：""|licore0|bridge → bridge；
 // host → host（复用宿主网络栈）；none → none。其余名字视为自定义桥接网络。
 func ParseNetMode(n string) NetMode {
 	switch n {
-	case "", "boxli0", "bridge":
+	case "", "licore0", "bridge":
 		return ModeBridge
 	case "host":
 		return ModeHost
@@ -111,7 +111,7 @@ func New(name string, d Driver) *Network {
 	return &Network{Name: name, Driver: d, CreatedAt: time.Now().UTC().Format(time.RFC3339)}
 }
 
-// IsPreset 报告该网络是否为内置预置网络（boxli0）。
+// IsPreset 报告该网络是否为内置预置网络（licore0）。
 func (n *Network) IsPreset() bool { return n.Name == PresetBridgeName }
 
 // String 面向用户的可读摘要。
@@ -120,4 +120,4 @@ func (n *Network) String() string {
 }
 
 // ErrDataDir 表示无法确定数据目录（Manager 构造失败）。
-var ErrDataDir = fmt.Errorf("boxli/network: 无法确定数据目录")
+var ErrDataDir = fmt.Errorf("licore/network: 无法确定数据目录")

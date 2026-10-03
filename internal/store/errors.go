@@ -6,4 +6,4 @@ package store
 import "errors"
 
 // ErrExists 表示目标目录下已存在同名镜像且未指定 --force。
-var ErrExists = errors.New("boxli/store: 镜像已存在")
+var ErrExists = errors.New("licore/store: 镜像已存在")

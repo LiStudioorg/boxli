@@ -13,9 +13,9 @@ import (
 	"github.com/LiStudioorg/licore/internal/runtime"
 )
 
-// newSpikeCommand 注册隐藏命令 `boxli dev-run`：spike / 基准测试入口，
+// newSpikeCommand 注册隐藏命令 `licore dev-run`：spike / 基准测试入口，
 // 直接在指定 rootfs 上以前台方式运行容器，等待退出并回传退出码。
-// 与 `boxli run`（正式命令）共用 internal/runtime。
+// 与 `licore run`（正式命令）共用 internal/runtime。
 func newSpikeCommand(out io.Writer) *cobra.Command {
 	var (
 		rootfs   string
@@ -46,13 +46,13 @@ func newSpikeCommand(out io.Writer) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&rootfs, "rootfs", "", "容器根目录（必填）")
-	cmd.Flags().StringVar(&hostname, "hostname", "boxli", "容器 hostname")
+	cmd.Flags().StringVar(&hostname, "hostname", "licore", "容器 hostname")
 	cmd.Flags().StringArrayVarP(&env, "env", "e", nil, "环境变量 KEY=VALUE，可重复")
 	_ = cmd.MarkFlagRequired("rootfs")
 	return cmd
 }
 
-// exitCodeError 把容器退出码转译为 boxli 的进程退出码。
+// exitCodeError 把容器退出码转译为 licore 的进程退出码。
 type exitCodeError struct{ code int }
 
 func (e *exitCodeError) Error() string { return fmt.Sprintf("容器以退出码 %d 结束", e.code) }

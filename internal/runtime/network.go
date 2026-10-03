@@ -12,15 +12,15 @@ import (
 )
 
 // 网络装配通过内部环境变量从父进程（engine/shim）传给容器 init。
-// envWithoutBoxli 统一剥离 BOXLI_* 前缀，故这些键不会泄漏进用户命令行。
+// envWithoutLiCore 统一剥离 LICORE_* 前缀，故这些键不会泄漏进用户命令行。
 const (
-	envNetMode    = "BOXLI_NET_MODE"    // bridge|host|none
-	envNetName    = "BOXLI_NET_NAME"    // 网络名
-	envNetIP      = "BOXLI_NET_IP"      // 容器 IP
-	envNetGateway = "BOXLI_NET_GATEWAY" // 桥接网关
-	envNetPrefix  = "BOXLI_NET_PREFIX"  // 子网前缀长度
-	envNetHost    = "BOXLI_NET_HOST"    // 容器名（写入 /etc/hosts）
-	envNetCID     = "BOXLI_NET_CID"     // 容器 ID（veth 命名用）
+	envNetMode    = "LICORE_NET_MODE"    // bridge|host|none
+	envNetName    = "LICORE_NET_NAME"    // 网络名
+	envNetIP      = "LICORE_NET_IP"      // 容器 IP
+	envNetGateway = "LICORE_NET_GATEWAY" // 桥接网关
+	envNetPrefix  = "LICORE_NET_PREFIX"  // 子网前缀长度
+	envNetHost    = "LICORE_NET_HOST"    // 容器名（写入 /etc/hosts）
+	envNetCID     = "LICORE_NET_CID"     // 容器 ID（veth 命名用）
 )
 
 // NetEnv 把网络装配参数编码为一组环境变量（追加到 runtime.Config.Env）。

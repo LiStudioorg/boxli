@@ -21,17 +21,17 @@ import (
 	"github.com/LiStudioorg/licore/hub"
 )
 
-// newHubCommand 实现 `boxli hub` 命令树（当前仅 serve 子命令）。
+// newHubCommand 实现 `licore hub` 命令树（当前仅 serve 子命令）。
 func newHubCommand(out io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "hub",
-		Short: "Boxli Hub 分发服务",
+		Short: "LiCore Hub 分发服务",
 	}
 	cmd.AddCommand(newHubServeCommand(out))
 	return cmd
 }
 
-// newHubServeCommand 实现 `boxli hub serve`：启动自研镜像分发 HTTP 服务。
+// newHubServeCommand 实现 `licore hub serve`：启动自研镜像分发 HTTP 服务。
 // 常驻前台运行，Ctrl+C（SIGINT/SIGTERM）优雅关闭。
 func newHubServeCommand(out io.Writer) *cobra.Command {
 	var (
@@ -44,8 +44,8 @@ func newHubServeCommand(out io.Writer) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "serve",
-		Short: "启动 Boxli Hub HTTP 服务",
-		Long: "启动 Boxli Hub HTTP 服务（blob 存储 + tag 索引 + JWT 鉴权）。\n" +
+		Short: "启动 LiCore Hub HTTP 服务",
+		Long: "启动 LiCore Hub HTTP 服务（blob 存储 + tag 索引 + JWT 鉴权）。\n" +
 			"默认绑定 127.0.0.1:3727。storage 支持 local（默认）/ s3（预留占位）。\n" +
 			"可用 --username/--password 注册第一个登录用户；未指定时登录接口不可用。",
 		Args: cobra.NoArgs,
@@ -106,18 +106,18 @@ func newHubServeCommand(out io.Writer) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("监听 %s 失败: %w", addr, err)
 			}
-			fmt.Fprintf(out, "Boxli Hub 已就绪，监听 %s（数据目录 %s）\n", addr, root)
+			fmt.Fprintf(out, "LiCore Hub 已就绪，监听 %s（数据目录 %s）\n", addr, root)
 			err = httpSrv.Serve(ln)
 			if err != nil && !errors.Is(err, http.ErrServerClosed) {
 				return err
 			}
-			fmt.Fprintf(out, "Boxli Hub 已关闭\n")
+			fmt.Fprintf(out, "LiCore Hub 已关闭\n")
 			return nil
 		},
 	}
 	cmd.Flags().IntVarP(&port, "port", "p", 3727, "监听端口")
 	cmd.Flags().StringVar(&bind, "bind", "127.0.0.1", "绑定地址")
-	cmd.Flags().StringVar(&dataDir, "data-dir", "", "数据目录（默认 $BOXLI_HOME 或 ~/.boxli，仓库置于 <root>/hub）")
+	cmd.Flags().StringVar(&dataDir, "data-dir", "", "数据目录（默认 $LICORE_HOME 或 ~/.licore，仓库置于 <root>/hub）")
 	cmd.Flags().StringVar(&storage, "storage", "local", "blob 存储驱动：local|s3")
 	cmd.Flags().StringVar(&authUser, "username", "", "注册登录用户名")
 	cmd.Flags().StringVar(&authPass, "password", "", "注册登录用户密码")

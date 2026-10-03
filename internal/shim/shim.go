@@ -12,11 +12,11 @@ import (
 	"github.com/LiStudioorg/licore/internal/store"
 )
 
-// 重执行 shim 的环境变量：main 分流标记 + 参数传递（与 runtime 的 BOXLI_* 同族）。
+// 重执行 shim 的环境变量：main 分流标记 + 参数传递（与 runtime 的 LICORE_* 同族）。
 const (
-	EnvMarker    = "BOXLI_SHIM"       // 存在即表示本进程应以 shim 身份运行
-	EnvStoreRoot = "BOXLI_STORE_ROOT" // 数据目录
-	EnvContainer = "BOXLI_CONTAINER"  // 容器 ID
+	EnvMarker    = "LICORE_SHIM"       // 存在即表示本进程应以 shim 身份运行
+	EnvStoreRoot = "LICORE_STORE_ROOT" // 数据目录
+	EnvContainer = "LICORE_CONTAINER"  // 容器 ID
 
 	markerValue = "1"
 	logFileName = "container.log"  // 容器与 shim 的合并日志（append）
@@ -24,7 +24,7 @@ const (
 )
 
 // ErrShimNotRequested 表示当前进程没有 shim 标记。
-var ErrShimNotRequested = errors.New("boxli/shim: 本进程不是以 shim 身份启动的")
+var ErrShimNotRequested = errors.New("licore/shim: 本进程不是以 shim 身份启动的")
 
 // IsShimProcess 报告当前进程是否被以 shim 身份重执行（main 分流用）。
 func IsShimProcess() bool { return os.Getenv(EnvMarker) == markerValue }

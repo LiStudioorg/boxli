@@ -15,7 +15,7 @@ type DNSEntry struct {
 	IP   string
 }
 
-// DNSResolver 是 Boxli 内置 DNS：解析容器名 → 网桥 IP。
+// DNSResolver 是 LiCore 内置 DNS：解析容器名 → 网桥 IP。
 // 本实现通过查询全部网络的端点表完成解析，输入为网络名 + 容器名。
 type DNSResolver struct {
 	manager *Manager

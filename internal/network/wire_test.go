@@ -30,7 +30,7 @@ func TestWriteDNSFilesToCreatesEtc(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := string(hf)
-	if !strings.Contains(s, "172.18.0.3 demo") || !strings.Contains(s, "172.18.0.1 boxli-gw") {
+	if !strings.Contains(s, "172.18.0.3 demo") || !strings.Contains(s, "172.18.0.1 licore-gw") {
 		t.Fatalf("hosts 缺本机名/网关: %q", s)
 	}
 }

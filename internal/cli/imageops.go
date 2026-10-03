@@ -25,7 +25,7 @@ import (
 	"github.com/LiStudioorg/licore/internal/store"
 )
 
-// 本文件实现 `boxli tag` / `save` / `load` / `commit` 的纯逻辑层：
+// 本文件实现 `licore tag` / `save` / `load` / `commit` 的纯逻辑层：
 // 不依赖任何 syscall、不 shell out、不启动容器，全部可在任意平台上测试。
 // cobra 命令只负责参数绑定与输出渲染，业务语义都在这里。
 
@@ -51,7 +51,7 @@ func (r ImageRef) String() string { return r.Name + ":" + r.Version }
 
 // ParseImageRef 解析 name:version 引用并严格校验。
 // 名称规则与规范 §3.1 一致；version 非空、不含空白，允许字母数字与 . _ - 以及
-// 仓库常用的 @ : /（用于 digest 式 tag），保证 `boxli tag` 不会写出清单无法承载的引用。
+// 仓库常用的 @ : /（用于 digest 式 tag），保证 `licore tag` 不会写出清单无法承载的引用。
 func ParseImageRef(s string) (ImageRef, error) {
 	raw := strings.TrimSpace(s)
 	if raw == "" {
@@ -86,7 +86,7 @@ func ParseImageRef(s string) (ImageRef, error) {
 }
 
 // Retag 把 srcRef 指向的已落地镜像复制成 dstRef，不触碰 internal/store 与 internal/image。
-// 复制内容是整个镜像目录（source.boxli + index.json + 新写的 state.json），
+// 复制内容是整个镜像目录（source.licore + index.json + 新写的 state.json），
 // 全程"同父目录临时目录 + rename"，失败不留下半成品。
 // 目标已存在且 force=false 时返回包装了 store.ErrExists 的错误。
 func Retag(st *store.Store, srcRef, dstRef string, force bool) error {
@@ -105,7 +105,7 @@ func Retag(st *store.Store, srcRef, dstRef string, force bool) error {
 		return fmt.Errorf("源与目标引用相同 %s，无需打标签", src)
 	}
 
-	// 先把源镜像读进内存：source.boxli 之后直接复用字节，避免二次打开。
+	// 先把源镜像读进内存：source.licore 之后直接复用字节，避免二次打开。
 	state, manifest, srcFile, err := readLocalImage(st, src)
 	if err != nil {
 		return err
@@ -118,7 +118,7 @@ func Retag(st *store.Store, srcRef, dstRef string, force bool) error {
 	return nil
 }
 
-// ExportImage 把已落地镜像的 source.boxli 原样导出到 dst。
+// ExportImage 把已落地镜像的 source.licore 原样导出到 dst。
 // 写出是原子的：在目标同目录建临时文件，成功后 rename；
 // 目标已存在且 force=false 时返回包装了 store.ErrExists 的错误。
 func ExportImage(st *store.Store, ref, dst string, force bool) error {
@@ -137,9 +137,9 @@ func ExportImage(st *store.Store, ref, dst string, force bool) error {
 		return err
 	}
 	if !exists {
-		return fmt.Errorf("本地镜像 %s 不存在（先用 boxli images 确认）", r)
+		return fmt.Errorf("本地镜像 %s 不存在（先用 licore images 确认）", r)
 	}
-	srcPath := filepath.Join(st.ImageDir(r.Name, r.Version), "source.boxli")
+	srcPath := filepath.Join(st.ImageDir(r.Name, r.Version), "source.licore")
 	if _, err := os.Stat(srcPath); err != nil {
 		return fmt.Errorf("读取镜像文件 %s 失败: %w", srcPath, err)
 	}
@@ -150,16 +150,16 @@ func ExportImage(st *store.Store, ref, dst string, force bool) error {
 	return nil
 }
 
-// SaveImage 是 `boxli save` 的实现：与 ExportImage 相同，但校验目标以 .boxli 结尾
-// （规范 §1：`.boxli` 是自研镜像格式的唯一后缀，避免导出成会被误认的文件）。
+// SaveImage 是 `licore save` 的实现：与 ExportImage 相同，但校验目标以 .licore 结尾
+// （规范 §1：`.licore` 是自研镜像格式的唯一后缀，避免导出成会被误认的文件）。
 func SaveImage(st *store.Store, ref, dst string, force bool) error {
-	if !strings.HasSuffix(dst, ".boxli") {
-		return fmt.Errorf("导出目标 %q 必须以 .boxli 结尾（Boxli 镜像格式与 Docker/OCI 不兼容）", dst)
+	if !strings.HasSuffix(dst, ".licore") {
+		return fmt.Errorf("导出目标 %q 必须以 .licore 结尾（LiCore 镜像格式与 Docker/OCI 不兼容）", dst)
 	}
 	return ExportImage(st, ref, dst, force)
 }
 
-// ImportImage 校验并落地一个本地 .boxli 文件（等价 `boxli pull`，供 `boxli load` 使用）。
+// ImportImage 校验并落地一个本地 .licore 文件（等价 `licore pull`，供 `licore load` 使用）。
 // dstRef 非空且与清单自带引用不同时，额外在 store 中登记一份 dstRef 的副本。
 //
 // 幂等语义：清单自带引用已存在时不再重复落地（除非 force），
@@ -215,7 +215,7 @@ type CommitOptions struct {
 	OS string
 	// Labels 写入 config 小对象的 labels。
 	Labels map[string]string
-	// Message 作为 org.boxli.commit.message 注释写入 index.json。
+	// Message 作为 org.licore.commit.message 注释写入 index.json。
 	Message string
 }
 
@@ -223,7 +223,7 @@ type CommitOptions struct {
 type CommitResult struct {
 	// Ref 是产物的 name:version。
 	Ref string
-	// Path 是产物 .boxli 文件路径。
+	// Path 是产物 .licore 文件路径。
 	Path string
 	// Bytes 是产物文件字节数。
 	Bytes int64
@@ -233,13 +233,13 @@ type CommitResult struct {
 	Skipped int
 }
 
-// CommitRootfs 把容器的可写 rootfs 打包成一个新的单层 .boxli 镜像（规范 §1 / §3）。
+// CommitRootfs 把容器的可写 rootfs 打包成一个新的单层 .licore 镜像（规范 §1 / §3）。
 //
 // 产物布局：
 //
 //	<root>/images/<name>/<version>/
-//	├── source.boxli            外层未压缩 tar：index.json + layers/000001.app.tar.gz + blobs/sha256-<hex>
-//	├── index.json              解析出的清单（与 source.boxli 内一致）
+//	├── source.licore            外层未压缩 tar：index.json + layers/000001.app.tar.gz + blobs/sha256-<hex>
+//	├── index.json              解析出的清单（与 source.licore 内一致）
 //	└── state.json              落地状态（sourcePath 指向产物自身）
 //
 // 层的摘要取 .gz 原始字节，config 的摘要取 blob 精确字节，两者都与清单声明严格一致；
@@ -298,8 +298,8 @@ func CommitRootfs(st *store.Store, cfg *store.ContainerConfig, ref string, opts 
 	}
 
 	// 段一：把 rootfs 打成临时 tar（未压缩），同时统计跳过项。
-	// 跳过产物自身所在目录，避免把 source.boxli 打回镜像里。
-	tmpDir, err := os.MkdirTemp("", "boxli-commit-")
+	// 跳过产物自身所在目录，避免把 source.licore 打回镜像里。
+	tmpDir, err := os.MkdirTemp("", "licore-commit-")
 	if err != nil {
 		return nil, fmt.Errorf("创建临时目录失败: %w", err)
 	}
@@ -334,7 +334,7 @@ func CommitRootfs(st *store.Store, cfg *store.ContainerConfig, ref string, opts 
 
 	annotations := map[string]string{}
 	if opts.Message != "" {
-		annotations["org.boxli.commit.message"] = opts.Message
+		annotations["org.licore.commit.message"] = opts.Message
 	}
 	if len(annotations) == 0 {
 		annotations = nil
@@ -374,13 +374,13 @@ func CommitRootfs(st *store.Store, cfg *store.ContainerConfig, ref string, opts 
 	if err != nil {
 		return nil, fmt.Errorf("读取层文件失败: %w", err)
 	}
-	boxliPath := filepath.Join(tmpDir, "source.boxli")
-	if err := writeBoxliArchive(boxliPath, idxBytes, cfgBytes, layerBytes, blobName); err != nil {
+	licorePath := filepath.Join(tmpDir, "source.licore")
+	if err := writeLiCoreArchive(licorePath, idxBytes, cfgBytes, layerBytes, blobName); err != nil {
 		return nil, err
 	}
 
 	// 段四：自检 + 落盘（临时目录 → rename，原子）。
-	selfCheck, err := image.OpenFile(boxliPath)
+	selfCheck, err := image.OpenFile(licorePath)
 	if err != nil {
 		return nil, fmt.Errorf("commit 自检失败（产物不可用）: %w", err)
 	}
@@ -391,39 +391,39 @@ func CommitRootfs(st *store.Store, cfg *store.ContainerConfig, ref string, opts 
 		return nil, fmt.Errorf("commit 自检失败（清单）: %w", err)
 	}
 
-	boxli, err := os.Open(boxliPath)
+	licore, err := os.Open(licorePath)
 	if err != nil {
 		return nil, fmt.Errorf("打开产物失败: %w", err)
 	}
-	defer func() { _ = boxli.Close() }()
-	boxliInfo, err := boxli.Stat()
+	defer func() { _ = licore.Close() }()
+	licoreInfo, err := licore.Stat()
 	if err != nil {
 		return nil, fmt.Errorf("读取产物信息失败: %w", err)
 	}
 	state := stateOnDisk{State: store.State{
 		Ref:             manifest.Ref(),
 		PulledAt:        time.Now().UTC().Format(time.RFC3339),
-		SourcePath:      filepath.Join(dir, "source.boxli"),
-		SourceFileBytes: boxliInfo.Size(),
+		SourcePath:      filepath.Join(dir, "source.licore"),
+		SourceFileBytes: licoreInfo.Size(),
 		LayersVerified:  true,
 	}}
-	if err := putImageDir(st, r, boxli, idxBytes, state); err != nil {
+	if err := putImageDir(st, r, licore, idxBytes, state); err != nil {
 		return nil, err
 	}
 
 	slog.Info("已从容器 rootfs 提交镜像",
-		"container", cfg.ID, "ref", manifest.Ref(), "bytes", boxliInfo.Size(), "skipped", skipped)
+		"container", cfg.ID, "ref", manifest.Ref(), "bytes", licoreInfo.Size(), "skipped", skipped)
 	return &CommitResult{
 		Ref:         manifest.Ref(),
-		Path:        filepath.Join(dir, "source.boxli"),
-		Bytes:       boxliInfo.Size(),
+		Path:        filepath.Join(dir, "source.licore"),
+		Bytes:       licoreInfo.Size(),
 		LayerDigest: layerDigest,
 		Skipped:     skipped,
 	}, nil
 }
 
-// readLocalImage 读取已落地镜像的 state.json / index.json / source.boxli 字节。
-// state.json 缺失是致命错误；index.json 损坏时降级为从 source.boxli 内部重新解析
+// readLocalImage 读取已落地镜像的 state.json / index.json / source.licore 字节。
+// state.json 缺失是致命错误；index.json 损坏时降级为从 source.licore 内部重新解析
 // （复制产物必须带上一份可用的清单展开副本）。
 func readLocalImage(st *store.Store, ref ImageRef) (*store.State, *image.Manifest, []byte, error) {
 	dir := st.ImageDir(ref.Name, ref.Version)
@@ -431,7 +431,7 @@ func readLocalImage(st *store.Store, ref ImageRef) (*store.State, *image.Manifes
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("本地镜像 %s 状态不可读: %w", ref, err)
 	}
-	srcPath := filepath.Join(dir, "source.boxli")
+	srcPath := filepath.Join(dir, "source.licore")
 	srcBytes, err := os.ReadFile(srcPath)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("读取镜像文件 %s 失败: %w", srcPath, err)
@@ -443,11 +443,11 @@ func readLocalImage(st *store.Store, ref ImageRef) (*store.State, *image.Manifes
 	case ierr == nil:
 		manifest, err = image.ParseManifest(idxBytes)
 		if err != nil {
-			slog.Warn("镜像目录 index.json 非法，改用 source.boxli 内清单", "dir", dir, "err", err)
+			slog.Warn("镜像目录 index.json 非法，改用 source.licore 内清单", "dir", dir, "err", err)
 			manifest = nil
 		}
 	case errors.Is(ierr, fs.ErrNotExist):
-		slog.Warn("镜像目录缺少 index.json，改用 source.boxli 内清单", "dir", dir)
+		slog.Warn("镜像目录缺少 index.json，改用 source.licore 内清单", "dir", dir)
 	default:
 		return nil, nil, nil, fmt.Errorf("读取 index.json 失败: %w", ierr)
 	}
@@ -488,7 +488,7 @@ func newStateFor(src *store.State, dst, srcRef ImageRef) stateOnDisk {
 }
 
 // writeImageDir 在 st 中新建 dst 引用目录（同父临时目录 → rename），内容为
-// 给定的 source.boxli 字节 + manifest 展开出的 index.json + 新写的 state.json。
+// 给定的 source.licore 字节 + manifest 展开出的 index.json + 新写的 state.json。
 // index.json 必须写入：store.ListImages 依赖它读取架构与层数，缺失会被判为损坏镜像。
 func writeImageDir(st *store.Store, dst ImageRef, srcBytes []byte, manifest *image.Manifest, srcState *store.State, srcRef ImageRef, force bool) error {
 	dir := st.ImageDir(dst.Name, dst.Version)
@@ -508,8 +508,8 @@ func writeImageDir(st *store.Store, dst ImageRef, srcBytes []byte, manifest *ima
 	}
 	defer func() { _ = os.RemoveAll(tmp) }() // 成功后 RemoveAll 对不存在路径静默
 
-	if err := os.WriteFile(filepath.Join(tmp, "source.boxli"), srcBytes, 0o644); err != nil {
-		return fmt.Errorf("写 source.boxli 失败: %w", err)
+	if err := os.WriteFile(filepath.Join(tmp, "source.licore"), srcBytes, 0o644); err != nil {
+		return fmt.Errorf("写 source.licore 失败: %w", err)
 	}
 	// index.json 是清单的展开副本：重排成目标引用的 name/version，
 	// 否则 store.images 会把新 tag 显示成源引用的名字与标签。
@@ -527,7 +527,7 @@ func writeImageDir(st *store.Store, dst ImageRef, srcBytes []byte, manifest *ima
 }
 
 // retargetManifest 返回清单的浅拷贝，name/version 换成目标引用；
-// 层与 config 摘要不变（source.boxli 是逐字节复制的，摘要仍然成立）。
+// 层与 config 摘要不变（source.licore 是逐字节复制的，摘要仍然成立）。
 func retargetManifest(m *image.Manifest, dst ImageRef) *image.Manifest {
 	if m == nil {
 		return &image.Manifest{Name: dst.Name, Version: dst.Version}
@@ -539,7 +539,7 @@ func retargetManifest(m *image.Manifest, dst ImageRef) *image.Manifest {
 }
 
 // putImageDir 与 writeImageDir 同理，但直接以"已打开的产物文件 + 指定 index.json 字节"
-// 落地 commit 结果；index.json 与 source.boxli 内部清单逐字节一致。
+// 落地 commit 结果；index.json 与 source.licore 内部清单逐字节一致。
 func putImageDir(st *store.Store, dst ImageRef, src *os.File, idxBytes []byte, state stateOnDisk) error {
 	dir := st.ImageDir(dst.Name, dst.Version)
 	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
@@ -551,7 +551,7 @@ func putImageDir(st *store.Store, dst ImageRef, src *os.File, idxBytes []byte, s
 	}
 	defer func() { _ = os.RemoveAll(tmp) }()
 
-	if err := copyOpenFile(src, filepath.Join(tmp, "source.boxli"), 0o644); err != nil {
+	if err := copyOpenFile(src, filepath.Join(tmp, "source.licore"), 0o644); err != nil {
 		return err
 	}
 	if err := os.WriteFile(filepath.Join(tmp, "index.json"), idxBytes, 0o644); err != nil {
@@ -843,10 +843,10 @@ func gzipFile(src, dst string) (string, int64, error) {
 	return "sha256:" + hex.EncodeToString(hasher.Sum(nil)), fi.Size(), nil
 }
 
-// writeBoxliArchive 写出外层未压缩 tar：index.json（首条）→ 层 → config blob。
+// writeLiCoreArchive 写出外层未压缩 tar：index.json（首条）→ 层 → config blob。
 // 三个条目的路径与 index.json 声明逐字一致，字节数为精确值，
 // 保证 image.OpenFile 的结构 / 大小 / 摘要三类校验全部通过。
-func writeBoxliArchive(dst string, idxBytes, cfgBytes, layerBytes []byte, blobName string) error {
+func writeLiCoreArchive(dst string, idxBytes, cfgBytes, layerBytes []byte, blobName string) error {
 	f, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
 	if err != nil {
 		return fmt.Errorf("创建镜像文件失败: %w", err)

@@ -3,7 +3,7 @@
 
 //go:build linux
 
-// Package netlink 是 Boxli 自研的最小 rtnetlink 客户端：只实现网络模块
+// Package netlink 是 LiCore 自研的最小 rtnetlink 客户端：只实现网络模块
 // 需要的那部分消息（链路增删改查、地址增删查、路由增删查、命名空间切换），
 // 直接与内核 NETLINK_ROUTE 套接字对话。
 //
@@ -304,7 +304,7 @@ type message struct {
 }
 
 // ErrShortMessage 表示内核返回的消息被截断（防御性检查）。
-var ErrShortMessage = errors.New("boxli/network/netlink: 消息长度不足")
+var ErrShortMessage = errors.New("licore/network/netlink: 消息长度不足")
 
 // OpError 包装一次 rtnetlink 操作的 errno。
 type OpError struct {

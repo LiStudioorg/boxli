@@ -51,18 +51,18 @@ func TestIsInitProcess(t *testing.T) {
 	}
 }
 
-func TestEnvWithoutBoxli(t *testing.T) {
-	t.Setenv("BOXLI_CHILD", "1")
-	t.Setenv("BOXLI_ROOTFS", "/x")
+func TestEnvWithoutLiCore(t *testing.T) {
+	t.Setenv("LICORE_CHILD", "1")
+	t.Setenv("LICORE_ROOTFS", "/x")
 	os.Setenv("PATH_KEEP", "yes")
 	defer os.Unsetenv("PATH_KEEP")
 
-	got := envWithoutBoxli()
+	got := envWithoutLiCore()
 	found := map[string]bool{}
 	for _, kv := range got {
 		found[kv] = true
 	}
-	if found["BOXLI_CHILD=1"] || found["BOXLI_ROOTFS=/x"] {
+	if found["LICORE_CHILD=1"] || found["LICORE_ROOTFS=/x"] {
 		t.Fatalf("内部变量未剥离: %v", got)
 	}
 	if !found["PATH_KEEP=yes"] {

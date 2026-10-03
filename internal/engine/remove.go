@@ -15,7 +15,7 @@ import (
 )
 
 // ErrContainerRunning 表示容器仍在运行，未加 --force 时拒绝删除。
-var ErrContainerRunning = errors.New("boxli/engine: 容器正在运行")
+var ErrContainerRunning = errors.New("licore/engine: 容器正在运行")
 
 // RemoveResult 是一次 rm 的结果。
 type RemoveResult struct {
@@ -48,7 +48,7 @@ func RemoveWithContext(ctx context.Context, st *store.Store, idOrName string, fo
 	}
 	if running {
 		if !force {
-			return res, fmt.Errorf("容器 %s（%s）正在运行，请先 boxli stop %s（或加 -f 强制删除）: %w",
+			return res, fmt.Errorf("容器 %s（%s）正在运行，请先 licore stop %s（或加 -f 强制删除）: %w",
 				cfg.Name, cfg.ID, cfg.Name, ErrContainerRunning)
 		}
 		if _, err := StopWithContext(ctx, st, cfg.ID, 0); err != nil {

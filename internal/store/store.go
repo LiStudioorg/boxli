@@ -15,23 +15,23 @@ import (
 	"github.com/LiStudioorg/licore/internal/image"
 )
 
-// Store 是 Boxli 本地数据目录（默认 ~/.boxli，可用 --data-dir 或 $BOXLI_HOME 覆盖）。
+// Store 是 LiCore 本地数据目录（默认 ~/.licore，可用 --data-dir 或 $LICORE_HOME 覆盖）。
 type Store struct {
 	// Root 是数据目录根路径。
 	Root string
 }
 
-// Open 返回数据目录，Root 为空时依次取 $BOXLI_HOME、~/.boxli。
+// Open 返回数据目录，Root 为空时依次取 $LICORE_HOME、~/.licore。
 func Open(root string) (*Store, error) {
 	if root == "" {
-		root = os.Getenv("BOXLI_HOME")
+		root = os.Getenv("LICORE_HOME")
 	}
 	if root == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return nil, fmt.Errorf("确定数据目录失败: %w", err)
 		}
-		root = filepath.Join(home, ".boxli")
+		root = filepath.Join(home, ".licore")
 	}
 	return &Store{Root: root}, nil
 }
@@ -42,7 +42,7 @@ type State struct {
 	Ref string `json:"ref"`
 	// PulledAt 是落地时间（UTC，RFC 3339）。
 	PulledAt string `json:"pulledAt"`
-	// SourcePath 是来源 .boxli 文件路径（本地 pull 记录）。
+	// SourcePath 是来源 .licore 文件路径（本地 pull 记录）。
 	SourcePath string `json:"sourcePath"`
 	// SourceSizeBytes 是来源文件字节数。
 	SourceFileBytes int64 `json:"sourceSizeBytes"`
@@ -68,7 +68,7 @@ func (s *Store) Exists(name, version string) (bool, error) {
 	}
 }
 
-// Put 校验并落地一个本地 .boxli 文件。已存在且 force=false 时返回 ErrExists。
+// Put 校验并落地一个本地 .licore 文件。已存在且 force=false 时返回 ErrExists。
 // 落地是原子的：先写入临时目录，全部成功后 rename。
 func (s *Store) Put(srcPath string, force bool) (*image.Loaded, error) {
 	loaded, err := image.OpenFile(srcPath)
@@ -112,7 +112,7 @@ func (s *Store) Put(srcPath string, force bool) (*image.Loaded, error) {
 	}
 	defer func() { _ = os.RemoveAll(tmp) }() // 成功后 RemoveAll 对不存在路径静默
 
-	if err := copyFile(src, filepath.Join(tmp, "source.boxli"), 0o644); err != nil {
+	if err := copyFile(src, filepath.Join(tmp, "source.licore"), 0o644); err != nil {
 		return nil, err
 	}
 	idxBytes, err := json.MarshalIndent(m, "", "  ")

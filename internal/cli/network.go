@@ -14,16 +14,16 @@ import (
 	"github.com/LiStudioorg/licore/internal/network"
 )
 
-// newNetworkCommand 实现 `boxli network` 命令树：网络驱动的创建、列举、
+// newNetworkCommand 实现 `licore network` 命令树：网络驱动的创建、列举、
 // 检查、删除与容器接入/断开。
 func newNetworkCommand(out io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "network",
 		Aliases: []string{"net"},
 		Short:   "管理自定义网络（bridge / host / none）",
-		Long:    "管理 Boxli 的自研容器网络：bridge（veth+网桥+NAT）、host、none。内置预置网桥 boxli0。",
+		Long:    "管理 LiCore 的自研容器网络：bridge（veth+网桥+NAT）、host、none。内置预置网桥 licore0。",
 	}
-	cmd.PersistentFlags().StringVar(&networkDataDir, "data-dir", "", "数据目录（默认 $BOXLI_HOME 或 ~/.boxli）")
+	cmd.PersistentFlags().StringVar(&networkDataDir, "data-dir", "", "数据目录（默认 $LICORE_HOME 或 ~/.licore）")
 	cmd.AddCommand(newNetworkLs(out))
 	cmd.AddCommand(newNetworkCreate(out))
 	cmd.AddCommand(newNetworkInspect(out))

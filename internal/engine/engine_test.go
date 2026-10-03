@@ -123,7 +123,7 @@ func TestRunNameConflict(t *testing.T) {
 	}
 }
 
-// writeFakeImage 在 dir 里生成最小合法 .boxli（单层 + config blob）并配
+// writeFakeImage 在 dir 里生成最小合法 .licore（单层 + config blob）并配
 // state.json，让 run 流程在 fake 启动器下完整走通（不真解包层）。
 func writeFakeImage(t *testing.T, dir string) error {
 	t.Helper()
@@ -149,8 +149,8 @@ func writeFakeImage(t *testing.T, dir string) error {
 	ch := sha256.Sum256(cfg)
 
 	idx := map[string]any{
-		"mediaType":     "application/x.boxli.manifest+json",
-		"specVersion":   "boxli/image-spec/v1",
+		"mediaType":     "application/x.licore.manifest+json",
+		"specVersion":   "licore/image-spec/v1",
 		"schemaVersion": 1,
 		"architecture":  runtime.GOARCH,
 		"os":            runtime.GOOS,
@@ -162,7 +162,7 @@ func writeFakeImage(t *testing.T, dir string) error {
 	}
 	idxB, _ := json.MarshalIndent(idx, "", " ")
 
-	f, err := os.Create(filepath.Join(dir, "source.boxli"))
+	f, err := os.Create(filepath.Join(dir, "source.licore"))
 	if err != nil {
 		return err
 	}

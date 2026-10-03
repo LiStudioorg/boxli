@@ -8,7 +8,7 @@ import "testing"
 func TestParseNetMode(t *testing.T) {
 	cases := map[string]NetMode{
 		"":         ModeBridge,
-		"boxli0":   ModeBridge,
+		"licore0":  ModeBridge,
 		"bridge":   ModeBridge,
 		"host":     ModeHost,
 		"none":     ModeNone,
@@ -29,7 +29,7 @@ func TestClientNetConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 未接入端点 → ErrEndpointNotFound。
-	if _, err := m.ClientNetConfig("boxli0", "nope-cid"); err == nil {
+	if _, err := m.ClientNetConfig("licore0", "nope-cid"); err == nil {
 		t.Fatal("未接入端点应报错")
 	}
 	// 建一个不存在的网络 → Load 报错。
@@ -37,10 +37,10 @@ func TestClientNetConfig(t *testing.T) {
 		t.Fatal("不存在的网络应报错")
 	}
 	// 接入一个端点后应能解析出网关与前缀。
-	if _, err := m.Connect("boxli0", "cid1", "c1", ""); err != nil {
+	if _, err := m.Connect("licore0", "cid1", "c1", ""); err != nil {
 		t.Fatal(err)
 	}
-	cn, err := m.ClientNetConfig("boxli0", "cid1")
+	cn, err := m.ClientNetConfig("licore0", "cid1")
 	if err != nil {
 		t.Fatalf("ClientNetConfig: %v", err)
 	}

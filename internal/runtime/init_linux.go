@@ -26,7 +26,7 @@ const (
 	msPrivate = 0x40000 // MS_PRIVATE
 	msBind    = 0x1000  // MS_BIND
 
-	oldRootPrefix = ".boxli_old_root."
+	oldRootPrefix = ".licore_old_root."
 )
 
 // 挂载常量补充（syscall 包未导出 MS_NOSUID / MS_NOEXEC / MS_NODEV）。
@@ -67,7 +67,7 @@ var devSymlinks = map[string]string{
 const defaultShmSize = 64 << 20
 
 // envShmSize 允许调用方覆盖 /dev/shm 大小（字节，十进制字符串）。
-const envShmSize = "BOXLI_SHM_SIZE"
+const envShmSize = "LICORE_SHM_SIZE"
 
 // devShmSize 返回本次容器 /dev/shm 的大小：环境变量优先，其次默认值。
 // 非法或非正值一律回落默认值，不让坏输入阻断容器启动。
@@ -454,7 +454,7 @@ func bindHostDevices(rootfs string) error {
 }
 
 // RunInit 是容器 1 号进程入口：pivot_root 进新根、挂载最小 /dev 与 /proc，
-// 最后 exec 用户命令。仅应由 `boxli init` 重执行路径调用（见 IsInitProcess）。
+// 最后 exec 用户命令。仅应由 `licore init` 重执行路径调用（见 IsInitProcess）。
 func RunInit() error {
 	if !IsInitProcess() {
 		return ErrNotInit
@@ -470,7 +470,7 @@ func RunInit() error {
 	if err != nil {
 		return err
 	}
-	env := envWithoutBoxli()
+	env := envWithoutLiCore()
 
 	if hn := os.Getenv(envHostname); hn != "" {
 		if err := syscall.Sethostname([]byte(hn)); err != nil {
@@ -603,7 +603,7 @@ func safeContainerTarget(target string) error {
 	return nil
 }
 
-// childCmdline 从 BOXLI_ARGC / BOXLI_ARG0..N 读取用户命令。
+// childCmdline 从 LICORE_ARGC / LICORE_ARG0..N 读取用户命令。
 func childCmdline() ([]string, error) {
 	n, err := strconv.Atoi(os.Getenv(envChildCmdCountKey))
 	if err != nil || n <= 0 {
@@ -620,19 +620,19 @@ func childCmdline() ([]string, error) {
 	return argv, nil
 }
 
-// envWithoutBoxli 返回剥离 BOXLI_* 内部变量后的容器环境。
-func envWithoutBoxli() []string {
-	return envWithoutBoxliFrom(os.Environ())
+// envWithoutLiCore 返回剥离 LICORE_* 内部变量后的容器环境。
+func envWithoutLiCore() []string {
+	return envWithoutLiCoreFrom(os.Environ())
 }
 
-// envWithoutBoxliFrom 是 envWithoutBoxli 的纯函数实现，便于单元测试验证
-// 内部变量不会泄漏进容器（BOXLI_NET_* / BOXLI_MOUNT_* / BOXLI_CGROUP_ID
+// envWithoutLiCoreFrom 是 envWithoutLiCore 的纯函数实现，便于单元测试验证
+// 内部变量不会泄漏进容器（LICORE_NET_* / LICORE_MOUNT_* / LICORE_CGROUP_ID
 // 等是引擎与 init 之间的私有信道，不应出现在容器进程的环境里）。
-func envWithoutBoxliFrom(environ []string) []string {
+func envWithoutLiCoreFrom(environ []string) []string {
 	env := make([]string, 0, len(environ))
 	for _, kv := range environ {
 		k, _, _ := strings.Cut(kv, "=")
-		if strings.HasPrefix(k, "BOXLI_") {
+		if strings.HasPrefix(k, "LICORE_") {
 			continue
 		}
 		env = append(env, kv)

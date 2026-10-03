@@ -1,7 +1,7 @@
 // Copyright (C) 2026 LiStudioorg
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Package cli 组装 Boxli 的 cobra 命令树。这是全仓库唯一允许 import
+// Package cli 组装 LiCore 的 cobra 命令树。这是全仓库唯一允许 import
 // github.com/spf13/cobra 的包（main.go 除外），业务逻辑一律放在 internal/* 中。
 package cli
 
@@ -25,12 +25,12 @@ import (
 // Version 由 main 注入（可通过 -ldflags 覆盖），用于 --version。
 var Version = "0.0.0-dev"
 
-// NewRootCommand 构建 boxli 根命令及全部子命令。
+// NewRootCommand 构建 licore 根命令及全部子命令。
 func NewRootCommand(out, errOut io.Writer) *cobra.Command {
 	root := &cobra.Command{
-		Use:           "boxli",
-		Short:         "Boxli —— 自研生态的轻量级容器引擎",
-		Long:          "Boxli 是一个轻量级容器引擎：自研 .boxli 镜像格式，不兼容 Docker / OCI。\n详见 https://github.com/LiStudioorg/licore",
+		Use:           "licore",
+		Short:         "LiCore —— 自研生态的轻量级容器引擎",
+		Long:          "LiCore 是一个轻量级容器引擎：自研 .licore 镜像格式，不兼容 Docker / OCI。\n详见 https://github.com/LiStudioorg/licore",
 		Version:       Version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -81,12 +81,12 @@ func NewRootCommand(out, errOut io.Writer) *cobra.Command {
 }
 
 // Execute 运行命令树，返回进程退出码。调用方（main）负责 os.Exit。
-// 若本进程是被 fork 的容器 init（BOXLI_CHILD=1），跳过命令解析直接进初始化路径。
+// 若本进程是被 fork 的容器 init（LICORE_CHILD=1），跳过命令解析直接进初始化路径。
 func Execute() int {
 	setupLogging()
 	if runtime.IsInitProcess() {
 		if err := runtime.RunInit(); err != nil {
-			fmt.Fprintf(os.Stderr, "boxli init: %v\n", err)
+			fmt.Fprintf(os.Stderr, "licore init: %v\n", err)
 			return 1
 		}
 		return 0
@@ -95,7 +95,7 @@ func Execute() int {
 	defer cancel()
 	if shim.IsShimProcess() {
 		if err := shim.RunFromEnv(sigCtx); err != nil {
-			fmt.Fprintf(os.Stderr, "boxli shim: %v\n", err)
+			fmt.Fprintf(os.Stderr, "licore shim: %v\n", err)
 			return 1
 		}
 		return 0
@@ -106,7 +106,7 @@ func Execute() int {
 		if errors.As(err, &ee) {
 			return ee.ExitCode()
 		}
-		fmt.Fprintf(os.Stderr, "boxli: %v\n", err)
+		fmt.Fprintf(os.Stderr, "licore: %v\n", err)
 		return 1
 	}
 	return 0
@@ -114,13 +114,13 @@ func Execute() int {
 
 // notImplemented 统一生成"尚未实现"错误，避免各命令文案漂移。
 func notImplemented(name string) error {
-	return fmt.Errorf("boxli %s: 尚未实现", name)
+	return fmt.Errorf("licore %s: 尚未实现", name)
 }
 
-// setupLogging 初始化 log/slog：默认 Warn 级别，BOXLI_LOG=debug|info 提升。
+// setupLogging 初始化 log/slog：默认 Warn 级别，LICORE_LOG=debug|info 提升。
 func setupLogging() {
 	lvl := slog.LevelWarn
-	switch strings.ToLower(os.Getenv("BOXLI_LOG")) {
+	switch strings.ToLower(os.Getenv("LICORE_LOG")) {
 	case "debug":
 		lvl = slog.LevelDebug
 	case "info":

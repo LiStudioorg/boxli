@@ -1,7 +1,7 @@
 // Copyright (C) 2026 LiStudioorg
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Package doctor 实现 `boxli doctor` 的环境自检：内核版本、namespace 与
+// Package doctor 实现 `licore doctor` 的环境自检：内核版本、namespace 与
 // user namespace 可用性、cgroups 挂载与控制器、systemd 可用性、数据目录与
 // 层缓存、二进制版本、宿主架构，以及可选的容器真实冒烟测试。
 //
@@ -28,13 +28,13 @@ import (
 // Status 是一个检查项的结果等级。
 type Status string
 
-// 结果等级取值。StatusFail 是唯一会让 `boxli doctor` 退出码非 0 的等级。
+// 结果等级取值。StatusFail 是唯一会让 `licore doctor` 退出码非 0 的等级。
 const (
 	// StatusOK 表示该项检查通过。
 	StatusOK Status = "ok"
 	// StatusWarn 表示环境可用但存在隐患，不影响正常使用。
 	StatusWarn Status = "warn"
-	// StatusFail 表示该环境无法运行 Boxli。
+	// StatusFail 表示该环境无法运行 LiCore。
 	StatusFail Status = "fail"
 	// StatusSkip 表示本环境无法检查或用户主动跳过，不代表失败。
 	StatusSkip Status = "skip"
@@ -215,10 +215,10 @@ type SmokeFunc func(ctx context.Context) (reason string, err error)
 
 // Options 配置一次自检。
 type Options struct {
-	// DataDir 是数据目录（~/.boxli 或 --data-dir），为空时按 $BOXLI_HOME、
-	// ~/.boxli 的顺序推断。
+	// DataDir 是数据目录（~/.licore 或 --data-dir），为空时按 $LICORE_HOME、
+	// ~/.licore 的顺序推断。
 	DataDir string
-	// Version 是 boxli 版本字符串（由 main 经 -ldflags 注入）。
+	// Version 是 licore 版本字符串（由 main 经 -ldflags 注入）。
 	Version string
 	// Skip 是要跳过的检查 ID 列表，跳过的项不会出现在报告中。
 	Skip []string
@@ -294,8 +294,8 @@ func runSmoke(ctx context.Context, opts *Options, smoke SmokeFunc) Check {
 
 	if !opts.TestRun {
 		c.Status = StatusSkip
-		c.Detail = "沙箱不支持 namespace（由 boxli doctor --test-run 触发）"
-		c.Hint = "在支持 namespace 的 Linux 主机上运行 `boxli doctor --test-run` 做真实容器验证"
+		c.Detail = "沙箱不支持 namespace（由 licore doctor --test-run 触发）"
+		c.Hint = "在支持 namespace 的 Linux 主机上运行 `licore doctor --test-run` 做真实容器验证"
 		return c
 	}
 
@@ -314,7 +314,7 @@ func runSmoke(ctx context.Context, opts *Options, smoke SmokeFunc) Check {
 	case reason != "":
 		c.Status = StatusSkip
 		c.Detail = reason
-		c.Hint = "在支持 namespace 的内核与沙箱中重试：`boxli run --rm <image> /bin/true`"
+		c.Hint = "在支持 namespace 的内核与沙箱中重试：`licore run --rm <image> /bin/true`"
 	default:
 		c.Status = StatusOK
 		c.Detail = "真实容器冒烟测试通过"
@@ -333,14 +333,14 @@ func normalize(c Check) Check {
 	return c
 }
 
-// resolveDataDir 解析数据目录：显式参数 > $BOXLI_HOME > ~/.boxli。
+// resolveDataDir 解析数据目录：显式参数 > $LICORE_HOME > ~/.licore。
 func resolveDataDir(dir string) string {
 	if dir == "" {
-		dir = os.Getenv("BOXLI_HOME")
+		dir = os.Getenv("LICORE_HOME")
 	}
 	if dir == "" {
 		if home, err := os.UserHomeDir(); err == nil {
-			dir = home + string(os.PathSeparator) + ".boxli"
+			dir = home + string(os.PathSeparator) + ".licore"
 		}
 	}
 	if abs, err := absPath(dir); err == nil {

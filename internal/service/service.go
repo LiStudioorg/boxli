@@ -3,8 +3,8 @@
 
 // Package service 管理系统级开机自启服务（AGENTS.md《开机自启动机制》）。
 //
-// Boxli 只注册一个全局一次性服务：Linux 上为 systemd unit
-// boxli.service（Type=oneshot，ExecStart=boxli boot，ExecStop=boxli
+// LiCore 只注册一个全局一次性服务：Linux 上为 systemd unit
+// licore.service（Type=oneshot，ExecStart=licore boot，ExecStop=licore
 // shutdown）。本包只做"生成文件 + 调用 systemctl 注册"两件事，自身不
 // 常驻；systemctl 通过 Runner 注入以便测试。macOS/Android 后端随各自
 // 平台阶段补充（launchd / Magisk service.d / Termux:Boot）。
@@ -21,7 +21,7 @@ import (
 )
 
 // UnitName 是 systemd 服务名。
-const UnitName = "boxli.service"
+const UnitName = "licore.service"
 
 // DefaultUnitDir 是 systemd 系统级 unit 目录。
 const DefaultUnitDir = "/etc/systemd/system"
@@ -32,9 +32,9 @@ const RuntimeDir = "/run/systemd/system"
 // 哨兵错误。
 var (
 	// ErrNotPermitted 表示写系统目录或调用 systemctl 权限不足。
-	ErrNotPermitted = errors.New("boxli/service: 权限不足")
+	ErrNotPermitted = errors.New("licore/service: 权限不足")
 	// ErrNoSystemd 表示本机没有 systemd 运行时。
-	ErrNoSystemd = errors.New("boxli/service: 本机未检测到 systemd")
+	ErrNoSystemd = errors.New("licore/service: 本机未检测到 systemd")
 )
 
 // Runner 抽象 systemctl 调用；测试注入 fake。
@@ -60,7 +60,7 @@ type Options struct {
 	UnitDir string
 	// Runner 是 systemctl 执行器（默认 execRunner）。
 	Runner Runner
-	// ExecPath 写入 ExecStart/ExecStop 的 boxli 绝对路径（默认 os.Executable）。
+	// ExecPath 写入 ExecStart/ExecStop 的 licore 绝对路径（默认 os.Executable）。
 	ExecPath string
 	// DataDir 非空时以 --data-dir 参数固化到 ExecStart/ExecStop，
 	// 避免 systemd 环境（HOME=/root）与用户数据目录不一致。
@@ -90,7 +90,7 @@ func (o *Options) execPath() (string, error) {
 	}
 	exe, err := os.Executable()
 	if err != nil {
-		return "", fmt.Errorf("定位 boxli 可执行文件失败: %w", err)
+		return "", fmt.Errorf("定位 licore 可执行文件失败: %w", err)
 	}
 	return exe, nil
 }
@@ -107,7 +107,7 @@ func (o *Options) UnitContent() (string, error) {
 	}
 	var b strings.Builder
 	b.WriteString("[Unit]\n")
-	b.WriteString("Description=Boxli container engine\n")
+	b.WriteString("Description=LiCore container engine\n")
 	b.WriteString("After=network.target\n\n")
 	b.WriteString("[Service]\n")
 	b.WriteString("Type=oneshot\n")
@@ -161,7 +161,7 @@ func Enable(ctx context.Context, o *Options) (*EnableResult, error) {
 
 	res := &EnableResult{UnitPath: unitPath}
 	if !detectsSystemd() {
-		res.Note = "未检测到 systemd 运行时：已生成服务文件，但未注册；在真机上重新执行 boxli boot enable 即可"
+		res.Note = "未检测到 systemd 运行时：已生成服务文件，但未注册；在真机上重新执行 licore boot enable 即可"
 		return res, nil
 	}
 	r := o.runner()
@@ -175,7 +175,7 @@ func Enable(ctx context.Context, o *Options) (*EnableResult, error) {
 	for _, s := range steps {
 		if _, err := r.Output(ctx, "systemctl", s.args...); err != nil {
 			if isPermissionErr(err) {
-				return res, fmt.Errorf("systemctl %s 权限不足: %w；请执行：sudo boxli boot enable", s.desc, ErrNotPermitted)
+				return res, fmt.Errorf("systemctl %s 权限不足: %w；请执行：sudo licore boot enable", s.desc, ErrNotPermitted)
 			}
 			return res, fmt.Errorf("systemctl %s 失败: %w", s.desc, err)
 		}
@@ -194,12 +194,12 @@ func Disable(ctx context.Context, o *Options) error {
 			// 继续尝试删文件，由后续错误兜底。
 			_ = err
 		} else if isPermissionErr(err) {
-			return fmt.Errorf("systemctl disable 权限不足: %w；请执行：sudo boxli boot disable", ErrNotPermitted)
+			return fmt.Errorf("systemctl disable 权限不足: %w；请执行：sudo licore boot disable", ErrNotPermitted)
 		}
 	}
 	if err := os.Remove(unitPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		if errors.Is(err, os.ErrPermission) {
-			return fmt.Errorf("删除 %s 需要 root 权限: %w；请执行：sudo boxli boot disable", unitPath, ErrNotPermitted)
+			return fmt.Errorf("删除 %s 需要 root 权限: %w；请执行：sudo licore boot disable", unitPath, ErrNotPermitted)
 		}
 		return fmt.Errorf("删除 unit 文件失败: %w", err)
 	}
@@ -281,5 +281,5 @@ func isPermissionErr(err error) bool {
 }
 
 func permissionHint(unitPath string, cause error) error {
-	return fmt.Errorf("写入 %s 需要 root 权限: %w；请执行：sudo boxli boot enable", unitPath, errors.Join(ErrNotPermitted, cause))
+	return fmt.Errorf("写入 %s 需要 root 权限: %w；请执行：sudo licore boot enable", unitPath, errors.Join(ErrNotPermitted, cause))
 }

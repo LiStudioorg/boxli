@@ -15,10 +15,10 @@ import (
 	"github.com/LiStudioorg/licore/internal/store"
 )
 
-// newExecCommand 实现 `boxli exec`：setns 进入运行中容器的命名空间执行命令。
+// newExecCommand 实现 `licore exec`：setns 进入运行中容器的命名空间执行命令。
 //
-//	boxli exec <容器ID|名字> <command...>
-//	boxli exec -it myapp /bin/sh
+//	licore exec <容器ID|名字> <command...>
+//	licore exec -it myapp /bin/sh
 func newExecCommand(out io.Writer) *cobra.Command {
 	var opts struct {
 		interactive bool
@@ -80,6 +80,6 @@ func newExecCommand(out io.Writer) *cobra.Command {
 	cmd.Flags().StringVarP(&opts.user, "user", "u", "", "运行用户 uid[:gid]")
 	cmd.Flags().StringVarP(&opts.workdir, "workdir", "w", "", "工作目录（容器内路径）")
 	cmd.Flags().StringArrayVarP(&opts.env, "env", "e", nil, "环境变量 KEY=VALUE，可重复")
-	cmd.Flags().StringVar(&opts.dataDir, "data-dir", "", "数据目录（默认 $BOXLI_HOME 或 ~/.boxli）")
+	cmd.Flags().StringVar(&opts.dataDir, "data-dir", "", "数据目录（默认 $LICORE_HOME 或 ~/.licore）")
 	return cmd
 }

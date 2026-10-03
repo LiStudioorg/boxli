@@ -155,13 +155,13 @@ func defaultBlobRoot() (string, error) {
 }
 
 func defaultDataRoot() (string, error) {
-	root := os.Getenv("BOXLI_HOME")
+	root := os.Getenv("LICORE_HOME")
 	if root == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return "", fmt.Errorf("确定数据目录失败: %w", err)
 		}
-		root = filepath.Join(home, ".boxli")
+		root = filepath.Join(home, ".licore")
 	}
 	return root, nil
 }

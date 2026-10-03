@@ -26,7 +26,7 @@ func buildImageCommands(out io.Writer) []*cobra.Command {
 	}
 }
 
-// newTagCommand 实现 `boxli tag SRC[:VER] DST[:VER]`：给已落地镜像打新标签。
+// newTagCommand 实现 `licore tag SRC[:VER] DST[:VER]`：给已落地镜像打新标签。
 func newTagCommand(out io.Writer) *cobra.Command {
 	var root string
 	var force bool
@@ -51,7 +51,7 @@ func newTagCommand(out io.Writer) *cobra.Command {
 	return cmd
 }
 
-// newCommitCommand 实现 `boxli commit CONTAINER NAME[:VERSION]`。
+// newCommitCommand 实现 `licore commit CONTAINER NAME[:VERSION]`。
 func newCommitCommand(out io.Writer) *cobra.Command {
 	var root, message string
 	cmd := &cobra.Command{
@@ -83,12 +83,12 @@ func newCommitCommand(out io.Writer) *cobra.Command {
 	return cmd
 }
 
-// newSaveCommand 实现 `boxli save IMAGE -o out.boxli`。
+// newSaveCommand 实现 `licore save IMAGE -o out.licore`。
 func newSaveCommand(out io.Writer) *cobra.Command {
 	var root, dst string
 	cmd := &cobra.Command{
 		Use:   "save IMAGE",
-		Short: "把本地镜像保存为 .boxli 文件",
+		Short: "把本地镜像保存为 .licore 文件",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			st, err := store.Open(root)
@@ -103,17 +103,17 @@ func newSaveCommand(out io.Writer) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&root, "data-dir", "", "数据目录")
-	cmd.Flags().StringVarP(&dst, "output", "o", "", "输出 .boxli 文件（必填）")
+	cmd.Flags().StringVarP(&dst, "output", "o", "", "输出 .licore 文件（必填）")
 	cmd.MarkFlagRequired("output")
 	return cmd
 }
 
-// newLoadCommand 实现 `boxli load -i file.boxli`。
+// newLoadCommand 实现 `licore load -i file.licore`。
 func newLoadCommand(out io.Writer) *cobra.Command {
 	var root, src string
 	cmd := &cobra.Command{
 		Use:   "load",
-		Short: "导入 .boxli 文件为本地镜像",
+		Short: "导入 .licore 文件为本地镜像",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			st, err := store.Open(root)
@@ -129,17 +129,17 @@ func newLoadCommand(out io.Writer) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&root, "data-dir", "", "数据目录")
-	cmd.Flags().StringVarP(&src, "input", "i", "", "要导入的 .boxli 文件（必填）")
+	cmd.Flags().StringVarP(&src, "input", "i", "", "要导入的 .licore 文件（必填）")
 	cmd.MarkFlagRequired("input")
 	return cmd
 }
 
-// newExportCommand 实现 `boxli export IMAGE -o out.boxli`（与 save 等价，方向同源）。
+// newExportCommand 实现 `licore export IMAGE -o out.licore`（与 save 等价，方向同源）。
 func newExportCommand(out io.Writer) *cobra.Command {
 	var root, dst string
 	cmd := &cobra.Command{
 		Use:   "export IMAGE",
-		Short: "导出本地镜像为 .boxli 文件",
+		Short: "导出本地镜像为 .licore 文件",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			st, err := store.Open(root)
@@ -159,12 +159,12 @@ func newExportCommand(out io.Writer) *cobra.Command {
 	return cmd
 }
 
-// newImportCommand 实现 `boxli import file.boxli`。
+// newImportCommand 实现 `licore import file.licore`。
 func newImportCommand(out io.Writer) *cobra.Command {
 	var root string
 	cmd := &cobra.Command{
 		Use:   "import FILE",
-		Short: "导入 .boxli 文件为本地镜像",
+		Short: "导入 .licore 文件为本地镜像",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if _, err := os.Stat(args[0]); err != nil {

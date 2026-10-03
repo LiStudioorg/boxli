@@ -36,7 +36,7 @@ CMD ["--config", "/etc/app.yaml"]
 EXPOSE 8080/tcp
 EXPOSE 9090
 VOLUME /data
-LABEL org.boxli.maintainer=alice
+LABEL org.licore.maintainer=alice
 USER 1000:1000
 ARG VERSION=1.2.3
 `,
@@ -53,7 +53,7 @@ ARG VERSION=1.2.3
 					{Op: OpExpose, Args: []string{"8080/tcp"}, Line: 11, Raw: "EXPOSE 8080/tcp"},
 					{Op: OpExpose, Args: []string{"9090"}, Line: 12, Raw: "EXPOSE 9090"},
 					{Op: OpVolume, Args: []string{"/data"}, Line: 13, Raw: "VOLUME /data"},
-					{Op: OpLabel, Args: []string{"org.boxli.maintainer", "alice"}, Line: 14, Raw: "LABEL org.boxli.maintainer=alice"},
+					{Op: OpLabel, Args: []string{"org.licore.maintainer", "alice"}, Line: 14, Raw: "LABEL org.licore.maintainer=alice"},
 					{Op: OpUser, Args: []string{"1000:1000"}, Line: 15, Raw: "USER 1000:1000"},
 					{Op: OpArg, Args: []string{"VERSION", "1.2.3"}, Line: 16, Raw: "ARG VERSION=1.2.3"},
 				},

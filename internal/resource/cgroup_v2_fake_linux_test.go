@@ -77,13 +77,13 @@ func TestV2SetupWritesAllLimits(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Setup: %v", err)
 	}
-	if c.Path != filepath.Join(root, BoxliGroup, "abc123") {
+	if c.Path != filepath.Join(root, LiCoreGroup, "abc123") {
 		t.Fatalf("Path = %s", c.Path)
 	}
 
-	cgroup := filepath.Join(root, BoxliGroup, "abc123")
+	cgroup := filepath.Join(root, LiCoreGroup, "abc123")
 	// 父组必须被 enableControllers 创建并开启控制器（回归 db14aa6）。
-	parent := filepath.Join(root, BoxliGroup)
+	parent := filepath.Join(root, LiCoreGroup)
 	if got := readFake(t, filepath.Join(parent, "cgroup.subtree_control")); !strings.Contains(got, "cpu") ||
 		!strings.Contains(got, "memory") || !strings.Contains(got, "pids") {
 		t.Fatalf("subtree_control = %q", got)
@@ -251,7 +251,7 @@ func TestV2IONodeThrottleWritesMax(t *testing.T) {
 // TestV2EnableControllersIdempotentWithIO 覆盖 enableControllers 去重分支。
 func TestV2EnableControllersIdempotentWithIO(t *testing.T) {
 	root := fakeV2Root(t)
-	parent := filepath.Join(root, BoxliGroup)
+	parent := filepath.Join(root, LiCoreGroup)
 	if err := os.MkdirAll(parent, 0o755); err != nil {
 		t.Fatal(err)
 	}

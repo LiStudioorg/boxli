@@ -140,7 +140,7 @@ func TestStopRunningShim(t *testing.T) {
 // TestStopForcesStubbornShim 验证超时强杀：假 shim 忽略 SIGTERM，超时后应被
 // SIGKILL 且状态被补写。
 func TestStopForcesStubbornShim(t *testing.T) {
-	if os.Getenv("BOXLI_TEST_STUBBORN") == "1" {
+	if os.Getenv("LICORE_TEST_STUBBORN") == "1" {
 		// 测试辅助进程：忽略 SIGTERM 常驻。
 		signalIgnore()
 		time.Sleep(30 * time.Second)
@@ -148,7 +148,7 @@ func TestStopForcesStubbornShim(t *testing.T) {
 	}
 	st, cfg := newStopTestStore(t, "stubborn", store.RestartAlways)
 	helper := exec.Command(os.Args[0], "-test.run=TestStopForcesStubbornShim")
-	helper.Env = append(os.Environ(), "BOXLI_TEST_STUBBORN=1")
+	helper.Env = append(os.Environ(), "LICORE_TEST_STUBBORN=1")
 	if err := helper.Start(); err != nil {
 		t.Fatal(err)
 	}

@@ -23,7 +23,7 @@ func WithAuth(secret string) ServerOption {
 	return func(s *Server) { s.auth = NewAuthenticator(secret, 24*time.Hour) }
 }
 
-// Server 是 Boxli hub 的 HTTP 服务。
+// Server 是 LiCore hub 的 HTTP 服务。
 type Server struct {
 	reg  *Registry
 	auth *Authenticator
@@ -292,5 +292,5 @@ func writeErr(w http.ResponseWriter, code int, err error) {
 // randSecret 生成一个会话级随机密钥（登录/签名用）。
 // 生产环境应通过 WithAuth 注入稳定 secret，避免重启后令牌全部失效。
 func randSecret() string {
-	return fmt.Sprintf("boxli-hub-%d-%d", os.Getpid(), time.Now().UnixNano())
+	return fmt.Sprintf("licore-hub-%d-%d", os.Getpid(), time.Now().UnixNano())
 }

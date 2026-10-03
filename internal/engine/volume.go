@@ -96,7 +96,7 @@ func wireVolumesBeforeStart(st *store.Store, cfg *store.ContainerConfig, mounts 
 			// 命名卷：校验存在并取数据目录。
 			mp, err := vm.Mountpoint(m.Source)
 			if err != nil {
-				return fmt.Errorf("run: 卷 %q 不存在，请先 boxli volume create: %w", m.Source, err)
+				return fmt.Errorf("run: 卷 %q 不存在，请先 licore volume create: %w", m.Source, err)
 			}
 			src = mp
 		}

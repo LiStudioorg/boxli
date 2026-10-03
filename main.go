@@ -1,7 +1,7 @@
 // Copyright (C) 2026 LiStudioorg
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Boxli —— 自研生态的轻量级容器引擎。
+// LiCore —— 自研生态的轻量级容器引擎。
 package main
 
 import (

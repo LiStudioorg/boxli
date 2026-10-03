@@ -17,10 +17,10 @@ import (
 	"time"
 )
 
-// stoppedByName 是 `boxli stop` 留下的用户停止标记文件名（空文件，存在即有效）。
+// stoppedByName 是 `licore stop` 留下的用户停止标记文件名（空文件，存在即有效）。
 const stoppedByName = "stopped-by-user"
 
-// Restart 是容器重启策略，取值与 `boxli run --restart` 一致。
+// Restart 是容器重启策略，取值与 `licore run --restart` 一致。
 type Restart string
 
 // 重启策略枚举（AGENTS.md《容器自启动标志》）。
@@ -40,7 +40,7 @@ func (r Restart) Valid() bool {
 	return false
 }
 
-// BootEligible 报告该策略下 `boxli boot` 开机是否应拉起本容器
+// BootEligible 报告该策略下 `licore boot` 开机是否应拉起本容器
 // （on-failure 只在 shim 内做失败重启，不参与开机自启）。
 func (r Restart) BootEligible() bool {
 	return r == RestartAlways || r == RestartUnlessStoped
@@ -81,7 +81,7 @@ type ContainerConfig struct {
 	WorkingDir string `json:"workingDir,omitempty"`
 	// User 是运行身份（阶段 2 暂仅记录，rootless 下等价 root）。
 	User string `json:"user,omitempty"`
-	// Network 是接入的网络名（boxli0/自定义/host/none）；空表示未指定（默认 bridge boxli0）。
+	// Network 是接入的网络名（licore0/自定义/host/none）；空表示未指定（默认 bridge licore0）。
 	Network string `json:"network,omitempty"`
 	// IP 是容器在桥接网络上的分配 IP；host/none 为空。
 	IP string `json:"ip,omitempty"`
@@ -122,11 +122,11 @@ const (
 // ErrorsContainersDir 辅助哨兵。
 var (
 	// ErrContainerExists 表示同名容器已存在。
-	ErrContainerExists = errors.New("boxli/store: 同名容器已存在")
+	ErrContainerExists = errors.New("licore/store: 同名容器已存在")
 	// ErrContainerNotFound 表示按 ID/名字找不到容器。
-	ErrContainerNotFound = errors.New("boxli/store: 容器不存在")
+	ErrContainerNotFound = errors.New("licore/store: 容器不存在")
 	// ErrBadContainerConfig 表示容器配置字段非法。
-	ErrBadContainerConfig = errors.New("boxli/store: 容器配置非法")
+	ErrBadContainerConfig = errors.New("licore/store: 容器配置非法")
 )
 
 // ContainersRoot 返回容器状态根目录 <root>/containers。
@@ -395,7 +395,7 @@ func (s *Store) ReadRuntimeState(id string) (*RuntimeState, bool, error) {
 	return &st, true, nil
 }
 
-// MarkStoppedByUser 写入 stopped-by-user 标记（boxli stop 调用）。
+// MarkStoppedByUser 写入 stopped-by-user 标记（licore stop 调用）。
 func (s *Store) MarkStoppedByUser(id string) error {
 	if _, err := os.Stat(filepath.Join(s.ContainerDir(id), "config.json")); err != nil {
 		if os.IsNotExist(err) {

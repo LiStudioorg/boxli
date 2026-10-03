@@ -32,7 +32,7 @@ import (
 // 做成变量（而非常量）以便单元测试注入临时目录；生产环境不要修改。
 var cgroupV1Roots = []string{CgroupV2Mount, "/dev/cgroup"}
 
-// v1Controllers 是 boxli 尝试使用的 v1 控制器，顺序固定以保证可复现。
+// v1Controllers 是 licore 尝试使用的 v1 控制器，顺序固定以保证可复现。
 // 顺序即写入优先级：memory 优先（资源限制里最常用）。
 var v1Controllers = []string{"memory", "cpu", "cpuacct", "cpuset", "pids", "blkio"}
 
@@ -137,7 +137,7 @@ func v1Root() string {
 // "//tmp/..."（虽多数系统能容忍，但 Stat/MkdirAll 的错误信息与比较都会失真）。
 // 这里用 filepath.Join，它会正确清理多余分隔符。
 func cgroupV1Path(root, controller, containerID string) string {
-	return filepath.Join(root, controller, BoxliGroup, containerID)
+	return filepath.Join(root, controller, LiCoreGroup, containerID)
 }
 
 // newV1Cgroup 构造 v1 形态的容器 cgroup 句柄。

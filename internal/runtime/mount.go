@@ -11,13 +11,13 @@ import (
 )
 
 // 卷挂载通过内部环境变量从父进程传给容器 init，由 RunInit 在 pivot_root
-// 之前把源 bind/tmpfs 挂到 rootfs 内的目标路径。envWithoutBoxli 统一剥离
-// BOXLI_* 前缀，故这些键不会泄漏进用户命令行。
+// 之前把源 bind/tmpfs 挂到 rootfs 内的目标路径。envWithoutLiCore 统一剥离
+// LICORE_* 前缀，故这些键不会泄漏进用户命令行。
 const (
-	envMountCount = "BOXLI_MOUNT_COUNT"  // 挂载条数
-	envMountSrcF  = "BOXLI_MOUNT_SRC_%d" // 源绝对路径
-	envMountDstF  = "BOXLI_MOUNT_DST_%d" // 容器内目标
-	envMountROF   = "BOXLI_MOUNT_RO_%d"  // 1=只读
+	envMountCount = "LICORE_MOUNT_COUNT"  // 挂载条数
+	envMountSrcF  = "LICORE_MOUNT_SRC_%d" // 源绝对路径
+	envMountDstF  = "LICORE_MOUNT_DST_%d" // 容器内目标
+	envMountROF   = "LICORE_MOUNT_RO_%d"  // 1=只读
 )
 
 // MountEnv 把已解析的挂载列表编码为一组环境变量（追加到 runtime.Config.Env）。

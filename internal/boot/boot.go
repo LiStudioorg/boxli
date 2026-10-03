@@ -1,7 +1,7 @@
 // Copyright (C) 2026 LiStudioorg
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Package boot 实现 `boxli boot` 的编排逻辑：扫描容器状态目录，按 restart
+// Package boot 实现 `licore boot` 的编排逻辑：扫描容器状态目录，按 restart
 // 策略一次性拉起应自启的容器（每容器 fork 一个 shim），执行完即返回。
 // 设计见 AGENTS.md《开机自启动机制》：boot 非常驻，也不直接持有容器生命周期。
 package boot
@@ -47,7 +47,7 @@ type Result struct {
 }
 
 // ErrPartial 表示部分容器拉起失败（Result.Failed 非空）。
-var ErrPartial = errors.New("boxli/boot: 部分容器启动失败")
+var ErrPartial = errors.New("licore/boot: 部分容器启动失败")
 
 // ShimLauncher 返回默认启动器：fork 脱离终端的 shim 进程。
 func ShimLauncher(st *store.Store) LaunchFunc {
@@ -140,7 +140,7 @@ func isZombie(pid int) (bool, error) {
 }
 
 // StopAll 优雅停止全部在运行的容器：向每个存活 shim 发 SIGTERM（shim 收到后
-// 转发容器 init 并退出，见 internal/shim）。供 `boxli shutdown` 使用。
+// 转发容器 init 并退出，见 internal/shim）。供 `licore shutdown` 使用。
 // wait 是等待 shim 退出的总时限；到点仍存活的计入 Timeout。单容器错误不中断整体。
 func StopAll(st *store.Store, wait time.Duration) (stopped, notRunning, timeout int, err error) {
 	all, err := st.ListContainers()

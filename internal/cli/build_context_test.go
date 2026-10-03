@@ -100,17 +100,17 @@ func TestBuildContextPositionalIsUsed(t *testing.T) {
 		t.Fatalf("位置参数上下文应可构建（out=%s）: %v", out, err)
 	}
 	// 反向自查：镜像层里必须是 there 的文件而不是 cwd 的。
-	if !boxliFileHas(t, filepath.Join(home, "images", "ctx", "pos", "v1", "source.boxli"), "only_there.txt") {
+	if !licoreFileHas(t, filepath.Join(home, "images", "ctx", "pos", "v1", "source.licore"), "only_there.txt") {
 		t.Error("镜像应含 only_there.txt（证明 COPY 源来自位置参数目录）")
 	}
-	if boxliFileHas(t, filepath.Join(home, "images", "ctx", "pos", "v1", "source.boxli"), "only_here.txt") {
+	if licoreFileHas(t, filepath.Join(home, "images", "ctx", "pos", "v1", "source.licore"), "only_here.txt") {
 		t.Error("镜像不应含 cwd 专属的 only_here.txt（说明误用了 cwd 上下文）")
 	}
 }
 
-// boxliFileHas 检查 .boxli（外层 tar 内含 layers/*.tar.gz）的任一层里
+// licoreFileHas 检查 .licore（外层 tar 内含 layers/*.tar.gz）的任一层里
 // 是否含以 name 结尾的文件条目。
-func boxliFileHas(t *testing.T, boxPath, name string) bool {
+func licoreFileHas(t *testing.T, boxPath, name string) bool {
 	t.Helper()
 	f, err := os.Open(boxPath)
 	if err != nil {

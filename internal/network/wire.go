@@ -106,7 +106,7 @@ func writeDNSFilesTo(root, ip, gateway, hostname string) error {
 	if err := os.MkdirAll(etc, 0o755); err != nil {
 		return fmt.Errorf("创建容器 %s: %w", etc, err)
 	}
-	// resolv.conf：指向桥接网关（Boxli 内置 DNS 的统一入口）。
+	// resolv.conf：指向桥接网关（LiCore 内置 DNS 的统一入口）。
 	resolv := fmt.Sprintf("nameserver %s\n", gateway)
 	if err := os.WriteFile(filepath.Join(etc, "resolv.conf"), []byte(resolv), 0o644); err != nil {
 		return fmt.Errorf("写 resolv.conf: %w", err)
@@ -117,7 +117,7 @@ func writeDNSFilesTo(root, ip, gateway, hostname string) error {
 	if hostname != "" {
 		fmt.Fprintf(&b, "%s %s\n", ip, hostname)
 	}
-	fmt.Fprintf(&b, "%s boxli-gw\n", gateway)
+	fmt.Fprintf(&b, "%s licore-gw\n", gateway)
 	if err := os.WriteFile(filepath.Join(etc, "hosts"), []byte(b.String()), 0o644); err != nil {
 		return fmt.Errorf("写 hosts: %w", err)
 	}

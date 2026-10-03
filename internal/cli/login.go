@@ -12,8 +12,8 @@ import (
 	"github.com/LiStudioorg/licore/hub"
 )
 
-// newLoginCommand 实现 `boxli login [HUB]`：向 Hub 换取令牌并缓存到数据目录。
-// 令牌绑定到具体 Hub 地址；HUB 省略时取 --hub / $BOXLI_HUB / 默认本地地址。
+// newLoginCommand 实现 `licore login [HUB]`：向 Hub 换取令牌并缓存到数据目录。
+// 令牌绑定到具体 Hub 地址；HUB 省略时取 --hub / $LICORE_HUB / 默认本地地址。
 func newLoginCommand(out io.Writer) *cobra.Command {
 	var (
 		hubFlag string
@@ -23,7 +23,7 @@ func newLoginCommand(out io.Writer) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "login [HUB]",
-		Short: "登录 Boxli Hub（换取并缓存访问令牌）",
+		Short: "登录 LiCore Hub（换取并缓存访问令牌）",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			base := hubBaseURL(hubFlag)
@@ -47,8 +47,8 @@ func newLoginCommand(out io.Writer) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&hubFlag, "hub", "", "Hub 地址（默认 $BOXLI_HUB 或 http://127.0.0.1:3727）")
-	cmd.Flags().StringVar(&dataDir, "data-dir", "", "数据目录（默认 $BOXLI_HOME 或 ~/.boxli）")
+	cmd.Flags().StringVar(&hubFlag, "hub", "", "Hub 地址（默认 $LICORE_HUB 或 http://127.0.0.1:3727）")
+	cmd.Flags().StringVar(&dataDir, "data-dir", "", "数据目录（默认 $LICORE_HOME 或 ~/.licore）")
 	cmd.Flags().StringVarP(&user, "username", "u", "", "Hub 用户名（必填）")
 	cmd.Flags().StringVarP(&pass, "password", "p", "", "Hub 密码")
 	return cmd

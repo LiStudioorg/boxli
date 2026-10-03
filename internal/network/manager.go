@@ -17,19 +17,19 @@ import (
 )
 
 // PresetBridgeName 是内置预置网桥名。
-const PresetBridgeName = "boxli0"
+const PresetBridgeName = "licore0"
 
-// PresetBridgeSubnet / PresetBridgeGateway 是 boxli0 的预置网段。
+// PresetBridgeSubnet / PresetBridgeGateway 是 licore0 的预置网段。
 const (
 	PresetBridgeSubnet  = "172.18.0.0/16"
 	PresetBridgeGateway = "172.18.0.1"
 )
 
 // PresetBridgeHostInterface 是预置网桥在宿主上的接口名（与网络名一致）。
-const PresetBridgeHostInterface = "boxli0"
+const PresetBridgeHostInterface = "licore0"
 
 // Manager 提供网络定义的增删改查与端点（容器）接入管理，并把定义持久化在
-// <root>/networks/ 下。<root> 复用 Boxli 数据目录（~/.boxli 等），网络文件
+// <root>/networks/ 下。<root> 复用 LiCore 数据目录（~/.licore 等），网络文件
 // 属于新增子路径，不改动既有磁盘布局。
 type Manager struct {
 	root string // 数据目录根
@@ -55,7 +55,7 @@ func (m *Manager) Root() string { return m.root }
 // networksRoot 返回网络定义目录 <root>/networks。
 func (m *Manager) networksRoot() string { return filepath.Join(m.root, "networks") }
 
-// List 返回全部网络（含自动补建的预置 boxli0），按名字排序。
+// List 返回全部网络（含自动补建的预置 licore0），按名字排序。
 func (m *Manager) List() ([]*Network, error) {
 	if err := m.ensurePreset(); err != nil {
 		return nil, err
@@ -153,7 +153,7 @@ func (m *Manager) Remove(name string) error {
 // path 返回某网络的持久化路径。
 func (m *Manager) path(name string) string { return filepath.Join(m.networksRoot(), name+".json") }
 
-// ensurePreset 无条件确保预置 boxli0 存在（不存在则创建）。
+// ensurePreset 无条件确保预置 licore0 存在（不存在则创建）。
 func (m *Manager) ensurePreset() error {
 	if _, err := os.Stat(m.path(PresetBridgeName)); err == nil {
 		return nil
@@ -176,7 +176,7 @@ func (m *Manager) ensurePreset() error {
 // pickFreeSubnet 返回一个不与宿主既有路由冲突的 /16 网段与网关（.1）。
 // prefer 优先（如 172.18.0.0/16）；若已被其他接口占用（如 Docker 的 br-*
 // 也用 172.18.0.0/16），则顺延从 172.20.0.0/16..172.31.0.0/16 选首个空闲。
-// 冲突症状是"boxli 容器能 Up，但 host→容器路由指向别的网桥、curl 空"。
+// 冲突症状是"licore 容器能 Up，但 host→容器路由指向别的网桥、curl 空"。
 func pickFreeSubnet(prefer string) (string, string) {
 	if prefer != "" && !subnetRoutedByOther(prefer) {
 		_, ipnet, _ := net.ParseCIDR(prefer)
@@ -200,7 +200,7 @@ func pickFreeSubnet(prefer string) (string, string) {
 	return "192.168.99.0/24", "192.168.99.1"
 }
 
-// subnetRoutedByOther 报告 net 是否被宿主某非 boxli 接口的路由覆盖。
+// subnetRoutedByOther 报告 net 是否被宿主某非 licore 接口的路由覆盖。
 func subnetRoutedByOther(subnet string) bool {
 	_, ipnet, err := net.ParseCIDR(subnet)
 	if err != nil {
@@ -300,7 +300,7 @@ func (m *Manager) Create(name string, d Driver, subnet, gateway string) (*Networ
 		return nil, err
 	}
 	// 宿主侧实化独立于定义落盘：无 root 时网络定义仍可管理（bridge 可后续
-	// 由 boxli network create 以 root 重建）。失败仅告警，不阻断数据层。
+	// 由 licore network create 以 root 重建）。失败仅告警，不阻断数据层。
 	if err := driverBootstrap(n); err != nil {
 		slog.Warn("实化网络接口失败，请以 root 运行或在下次创建时重试", "net", name, "err", err)
 	}
@@ -441,7 +441,7 @@ func (m *Manager) ReleasePorts(netName, containerID string) error {
 }
 
 // ApplyNAT 把网络的全部端口映射与出口 NAT 实化到 nftables。无 nft 或非
-// root 时返回相应错误，供 `boxli run -p` 路径显式处理（而非静默失败）。
+// root 时返回相应错误，供 `licore run -p` 路径显式处理（而非静默失败）。
 func (m *Manager) ApplyNAT(netName string) error {
 	n, err := m.Load(netName)
 	if err != nil {
@@ -459,7 +459,7 @@ func (m *Manager) ClearNAT(netName string) error {
 	return n.removePortRules("")
 }
 
-// EnsurePreset 无条件确保预置 boxli0 网络定义与宿主网桥存在（幂等）。
+// EnsurePreset 无条件确保预置 licore0 网络定义与宿主网桥存在（幂等）。
 func (m *Manager) EnsurePreset() error {
 	return m.ensurePreset()
 }

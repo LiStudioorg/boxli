@@ -28,7 +28,7 @@ import (
 // mustParse 解析 Boxfile 文本，失败即终止用例。
 func mustParse(t *testing.T, src string) *Boxfile {
 	t.Helper()
-	src = strings.ReplaceAll(src, "FROM scratch", "FROM boxli/scratch:v1")
+	src = strings.ReplaceAll(src, "FROM scratch", "FROM licore/scratch:v1")
 	bf, err := ParseBoxfile([]byte(src))
 	if err != nil {
 		t.Fatalf("ParseBoxfile(%q) 失败: %v", src, err)
@@ -56,7 +56,7 @@ func baseOpts(t *testing.T, dir, boxfile string) *Options {
 	return &Options{
 		ContextDir: dir,
 		Boxfile:    mustParse(t, boxfile),
-		OutPath:    filepath.Join(dir, "out.boxli"),
+		OutPath:    filepath.Join(dir, "out.licore"),
 	}
 }
 
@@ -87,7 +87,7 @@ func unpackAllLayers(t *testing.T, imgPath string, storeRoot string) []string {
 // image.OpenFile 打开、层摘要可重算、COPY 文件落在拓扑正确的层里。
 func TestScratchBuildCreatesValidImage(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, filepath.Join(dir, "hello.txt"), "hello boxli\n", 0o644)
+	writeFile(t, filepath.Join(dir, "hello.txt"), "hello licore\n", 0o644)
 	if err := os.Symlink("hello.txt", filepath.Join(dir, "link.txt")); err != nil {
 		t.Fatalf("Symlink: %v", err)
 	}
@@ -98,7 +98,7 @@ COPY hello.txt /app/hello.txt
 COPY link.txt /app/link.txt
 WORKDIR /app
 `)
-	opts.OutPath = filepath.Join(dir, "demo.boxli")
+	opts.OutPath = filepath.Join(dir, "demo.licore")
 
 	res, err := Build(context.Background(), opts)
 	if err != nil {
@@ -145,8 +145,8 @@ WORKDIR /app
 	if err != nil {
 		t.Fatalf("读取层内 app/hello.txt: %v", err)
 	}
-	if string(got) != "hello boxli\n" {
-		t.Errorf("层内 hello.txt=%q，期望 %q", got, "hello boxli\n")
+	if string(got) != "hello licore\n" {
+		t.Errorf("层内 hello.txt=%q，期望 %q", got, "hello licore\n")
 	}
 	link, err := os.Readlink(filepath.Join(layers[0], "app", "link.txt"))
 	if err != nil || link != "hello.txt" {
@@ -171,10 +171,10 @@ CMD ["--serve", "--port=8080"]
 EXPOSE 8080/tcp
 EXPOSE 9090/udp
 VOLUME /data
-LABEL org.boxli.maintainer=alice
+LABEL org.licore.maintainer=alice
 USER 1000:1000
 `)
-	opts.Labels = map[string]string{"org.boxli.extra": "lead"}
+	opts.Labels = map[string]string{"org.licore.extra": "lead"}
 	res, err := Build(context.Background(), opts)
 	if err != nil {
 		t.Fatalf("Build: %v", err)
@@ -210,11 +210,11 @@ USER 1000:1000
 	if len(cfg.Volumes) != 1 || cfg.Volumes[0] != "/data" {
 		t.Errorf("volumes=%v，期望 [/data]", cfg.Volumes)
 	}
-	if cfg.Labels["org.boxli.maintainer"] != "alice" {
-		t.Errorf("labels[org.boxli.maintainer]=%q，期望 alice", cfg.Labels["org.boxli.maintainer"])
+	if cfg.Labels["org.licore.maintainer"] != "alice" {
+		t.Errorf("labels[org.licore.maintainer]=%q，期望 alice", cfg.Labels["org.licore.maintainer"])
 	}
-	if cfg.Labels["org.boxli.extra"] != "lead" {
-		t.Errorf("labels[org.boxli.extra]=%q，期望 lead（Options.Labels 未合并）", cfg.Labels["org.boxli.extra"])
+	if cfg.Labels["org.licore.extra"] != "lead" {
+		t.Errorf("labels[org.licore.extra]=%q，期望 lead（Options.Labels 未合并）", cfg.Labels["org.licore.extra"])
 	}
 
 	// WORKDIR 必须在 rootfs 里真实建出来。
@@ -278,13 +278,13 @@ func TestBuildOnBasePreservesBaseLayers(t *testing.T) {
 	baseDir := filepath.Join(dir, "base")
 	writeFile(t, filepath.Join(baseDir, "base.txt"), "from base\n", 0o644)
 
-	// 基础镜像的文件名决定镜像引用（demo.boxli → demo:latest），
+	// 基础镜像的文件名决定镜像引用（demo.licore → demo:latest），
 	// 子 Boxfile 的 FROM 必须与之一致。
 	baseOpts := baseOpts(t, baseDir, `
 FROM scratch
 COPY base.txt /etc/base.txt
 `)
-	baseOpts.OutPath = filepath.Join(baseDir, "demo.boxli")
+	baseOpts.OutPath = filepath.Join(baseDir, "demo.licore")
 	baseRes, err := Build(context.Background(), baseOpts)
 	if err != nil {
 		t.Fatalf("构建基础镜像: %v", err)
@@ -311,7 +311,7 @@ COPY app.txt /etc/app.txt
 ENV APP=1
 `),
 		BaseImage: baseRes.Path,
-		OutPath:   filepath.Join(dir, "child.boxli"),
+		OutPath:   filepath.Join(dir, "child.licore"),
 	}
 	childRes, err := Build(context.Background(), childOpts)
 	if err != nil {
@@ -639,7 +639,7 @@ func TestBuildRejectsBadInput(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "a.txt"), "a\n", 0o644)
 
 	t.Run("nil_boxfile", func(t *testing.T) {
-		_, err := Build(context.Background(), &Options{OutPath: filepath.Join(dir, "x.boxli")})
+		_, err := Build(context.Background(), &Options{OutPath: filepath.Join(dir, "x.licore")})
 		if !errors.Is(err, ErrBadBoxfile) {
 			t.Fatalf("错误 %v 未包装 ErrBadBoxfile", err)
 		}
@@ -652,13 +652,13 @@ func TestBuildRejectsBadInput(t *testing.T) {
 	})
 	t.Run("missing_base", func(t *testing.T) {
 		opts := baseOpts(t, dir, "FROM scratch\n")
-		opts.BaseImage = filepath.Join(dir, "nope.boxli")
+		opts.BaseImage = filepath.Join(dir, "nope.licore")
 		if _, err := Build(context.Background(), opts); err == nil {
 			t.Fatal("Build 未拒绝不存在的基础镜像")
 		}
 	})
 	t.Run("corrupt_base", func(t *testing.T) {
-		bad := filepath.Join(dir, "bad.boxli")
+		bad := filepath.Join(dir, "bad.licore")
 		writeFile(t, bad, "not a tar at all", 0o644)
 		opts := baseOpts(t, dir, "FROM scratch\n")
 		opts.BaseImage = bad
@@ -677,7 +677,7 @@ func TestBuildRejectsBadInput(t *testing.T) {
 	t.Run("derived_name_invalid", func(t *testing.T) {
 		writeFile(t, filepath.Join(dir, "a.txt"), "a\n", 0o644)
 		opts := baseOpts(t, dir, "FROM scratch\nCOPY a.txt /a.txt\n")
-		opts.OutPath = filepath.Join(dir, "UPPER CASE.boxli")
+		opts.OutPath = filepath.Join(dir, "UPPER CASE.licore")
 		if _, err := Build(context.Background(), opts); !errors.Is(err, ErrBadInstruction) {
 			t.Fatalf("错误 %v 未包装 ErrBadInstruction（镜像名非法）", err)
 		}
@@ -723,8 +723,8 @@ func TestBuildRespectsPlatformOverrides(t *testing.T) {
 	if loaded.Manifest.Architecture != "arm64" || loaded.Manifest.OS != "linux" {
 		t.Errorf("平台=%s/%s，期望 linux/arm64", loaded.Manifest.OS, loaded.Manifest.Architecture)
 	}
-	if loaded.Manifest.Annotations["org.boxli.build.tool"] == "" {
-		t.Errorf("annotations 缺少 org.boxli.build.tool")
+	if loaded.Manifest.Annotations["org.licore.build.tool"] == "" {
+		t.Errorf("annotations 缺少 org.licore.build.tool")
 	}
 }
 
@@ -735,7 +735,7 @@ func TestBuildCtxDirAsDestPreservesModes(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "tree", "exec.sh"), "#!/bin/sh\n", 0o755)
 
 	opts := baseOpts(t, dir, "FROM scratch\nCOPY tree /opt/tree\n")
-	opts.OutPath = filepath.Join(dir, "tree.boxli")
+	opts.OutPath = filepath.Join(dir, "tree.licore")
 	res, err := Build(context.Background(), opts)
 	if err != nil {
 		t.Fatalf("Build: %v", err)
@@ -797,7 +797,7 @@ func TestImageRefOverride(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "f.txt"), "x\n", 0o644)
 	opts := baseOpts(t, dir, "FROM scratch\nCOPY f.txt /f.txt\n")
-	opts.OutPath = filepath.Join(dir, "whatever.boxli")
+	opts.OutPath = filepath.Join(dir, "whatever.licore")
 	opts.Name = "myns/demo"
 	opts.Version = "v7"
 	res, err := Build(context.Background(), opts)

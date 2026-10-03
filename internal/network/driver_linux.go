@@ -94,11 +94,11 @@ func nftCreateTables() error {
 		return err
 	}
 	// 表
-	_ = runNft("add", "table", "ip", "boxli")
+	_ = runNft("add", "table", "ip", "licore")
 	// 两个链
-	_ = runNft("add", "chain", "ip", "boxli", "post_nat",
+	_ = runNft("add", "chain", "ip", "licore", "post_nat",
 		"{ type nat hook postrouting priority srcnat; policy accept; }")
-	_ = runNft("add", "chain", "ip", "boxli", "pre_nat",
+	_ = runNft("add", "chain", "ip", "licore", "pre_nat",
 		"{ type nat hook prerouting priority dstnat; policy accept; }")
 	return nil
 }
@@ -154,28 +154,28 @@ func (n *Network) applyPortRules() error {
 }
 
 // natMasqArgs 返回出口 NAT 的 nft 参数（add rule，语法与 nft -c 校验一致：
-// `nft add rule ip boxli post_nat ip saddr <subnet> masquerade`）。
+// `nft add rule ip licore post_nat ip saddr <subnet> masquerade`）。
 func natMasqArgs(subnet string) []string {
-	return []string{"add", "rule", "ip", "boxli", "post_nat",
+	return []string{"add", "rule", "ip", "licore", "post_nat",
 		"ip", "saddr", subnet, "masquerade"}
 }
 
 // dnatRuleArgs 返回单条 DNAT 的 nft 参数（add rule：
-// `nft add rule ip boxli pre_nat tcp dport <hp> dnat to <cip>:<cport>`）。
+// `nft add rule ip licore pre_nat tcp dport <hp> dnat to <cip>:<cport>`）。
 func dnatRuleArgs(e *Endpoint, p *PortMapping) []string {
 	proto := "tcp"
 	if p.Proto == ProtoUDP {
 		proto = "udp"
 	}
-	return []string{"add", "rule", "ip", "boxli", "pre_nat",
+	return []string{"add", "rule", "ip", "licore", "pre_nat",
 		proto, "dport", strconv.Itoa(p.HostPort),
 		"dnat", "to", e.IP + ":" + strconv.Itoa(p.ContainerPort)}
 }
 
 // flushChains 清空 NAT 表的两条链（表或链不存在时幂等，为空时清空）。
 func (n *Network) flushChains() {
-	_ = runNft("flush", "chain", "ip", "boxli", "post_nat")
-	_ = runNft("flush", "chain", "ip", "boxli", "pre_nat")
+	_ = runNft("flush", "chain", "ip", "licore", "post_nat")
+	_ = runNft("flush", "chain", "ip", "licore", "pre_nat")
 }
 
 // deleteAllDnat 清空 pre_nat 链（在重放数据前调用，避免重复规则堆叠）。

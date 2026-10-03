@@ -15,7 +15,7 @@ import (
 //
 // 存在的意义有两条：一是保证全仓库在 linux/darwin/android 上都能编译与
 // `go vet` 通过（AGENTS.md《平台后端：build tags 分文件》）；二是让
-// macOS（vm_darwin）接入各自后端前，`boxli doctor` 仍然输出**同一组检查
+// macOS（vm_darwin）接入各自后端前，`licore doctor` 仍然输出**同一组检查
 // ID**，只是等级为 StatusSkip 并说明"本平台暂不支持"，而不是直接报错或
 // 缺失检查项。无 Root Android 官方不支持，不在本列表。
 

@@ -103,7 +103,7 @@ func wireNetworkBeforeStart(st *store.Store, cfg *store.ContainerConfig, netName
 	if err != nil {
 		return err
 	}
-	// 目标网络必须存在；缺省 boxli0 未定义时自动补建。
+	// 目标网络必须存在；缺省 licore0 未定义时自动补建。
 	if netName == network.PresetBridgeName {
 		if err := m.EnsurePreset(); err != nil {
 			return fmt.Errorf("初始化预置网络 %s 失败: %w", netName, err)

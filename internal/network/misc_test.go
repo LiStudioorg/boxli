@@ -12,7 +12,7 @@ func TestStringAndIsPreset(t *testing.T) {
 	}
 	pre := New(PresetBridgeName, DriverBridge)
 	if !pre.IsPreset() {
-		t.Fatal("boxli0 应为 preset")
+		t.Fatal("licore0 应为 preset")
 	}
 	if s := n.String(); s == "" {
 		t.Error("String 为空")
@@ -34,32 +34,32 @@ func TestInspectAndRelease(t *testing.T) {
 	if err := m.EnsurePreset(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.Connect("boxli0", "c1", "alice", ""); err != nil {
+	if _, err := m.Connect("licore0", "c1", "alice", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := m.AllocatePorts("boxli0", "c1", []*PortMapping{{HostPort: 80, ContainerPort: 80}}); err != nil {
+	if err := m.AllocatePorts("licore0", "c1", []*PortMapping{{HostPort: 80, ContainerPort: 80}}); err != nil {
 		t.Fatal(err)
 	}
-	n, err := m.Load("boxli0")
+	n, err := m.Load("licore0")
 	if err != nil || len(n.Endpoints) == 0 {
 		t.Fatalf("端点未登记: %v", err)
 	}
-	ins, err := m.Inspect("boxli0")
+	ins, err := m.Inspect("licore0")
 	if err != nil || ins == nil {
 		t.Fatalf("Inspect 失败: %v", err)
 	}
 	// ReleasePorts 清端口。
-	if err := m.ReleasePorts("boxli0", "c1"); err != nil {
+	if err := m.ReleasePorts("licore0", "c1"); err != nil {
 		t.Fatal(err)
 	}
-	n2, _ := m.Load("boxli0")
+	n2, _ := m.Load("licore0")
 	for _, e := range n2.Endpoints {
 		if e.ContainerID == "c1" && len(e.Ports) != 0 {
 			t.Error("ReleasePorts 未清端口")
 		}
 	}
 	// 对不存在容器 ReleasePorts 幂等。
-	if err := m.ReleasePorts("boxli0", "ghost"); err != nil {
+	if err := m.ReleasePorts("licore0", "ghost"); err != nil {
 		t.Errorf("ghost ReleasePorts 应幂等成功: %v", err)
 	}
 }
@@ -76,10 +76,10 @@ func TestConnectDuplicate(t *testing.T) {
 	if err := m.EnsurePreset(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.Connect("boxli0", "c1", "alice", ""); err != nil {
+	if _, err := m.Connect("licore0", "c1", "alice", ""); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.Connect("boxli0", "c1", "alice", ""); err == nil {
+	if _, err := m.Connect("licore0", "c1", "alice", ""); err == nil {
 		t.Error("重复接入应报错")
 	}
 }
@@ -90,17 +90,17 @@ func TestPruneEndpoints(t *testing.T) {
 	if err := m.EnsurePreset(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.Connect("boxli0", "c1", "alive", ""); err != nil {
+	if _, err := m.Connect("licore0", "c1", "alive", ""); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.Connect("boxli0", "c2", "dead", ""); err != nil {
+	if _, err := m.Connect("licore0", "c2", "dead", ""); err != nil {
 		t.Fatal(err)
 	}
 	// c2 已死（alive 谓词 false）。
-	if err := m.PruneEndpoints("boxli0", func(id string) bool { return id == "c1" }); err != nil {
+	if err := m.PruneEndpoints("licore0", func(id string) bool { return id == "c1" }); err != nil {
 		t.Fatal(err)
 	}
-	n, _ := m.Load("boxli0")
+	n, _ := m.Load("licore0")
 	ids := map[string]bool{}
 	for _, e := range n.Endpoints {
 		ids[e.ContainerID] = true

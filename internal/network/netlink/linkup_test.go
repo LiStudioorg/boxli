@@ -69,7 +69,7 @@ func TestLinkUpRequestLayout(t *testing.T) {
 // TestSetLinkMasterReqTargetsSlave 回归：被挂网的链路（slave）必须是请求主体，
 // 不要错把网桥 ifindex 当成主体（那样会"把网桥挂到网桥自己"→ EBUSY）。
 func TestSetLinkMasterReqTargetsSlave(t *testing.T) {
-	r := buildSetLinkMasterReq(10, "veth0", 20) // slave ifindex=10, boxli0 ifindex=20
+	r := buildSetLinkMasterReq(10, "veth0", 20) // slave ifindex=10, licore0 ifindex=20
 	// ifinfomsg.ifindex（buf[16+4:16+8]）必须是 slave=10，而非 master=20。
 	if got := getU32(r.buf[20:24]); got != 10 {
 		t.Fatalf("ifinfomsg.ifindex=%d 期望 slave=10", got)

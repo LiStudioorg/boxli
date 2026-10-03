@@ -11,7 +11,7 @@ import (
 	"github.com/LiStudioorg/licore/internal/runtime"
 )
 
-// newInitCommand 注册隐藏命令 `boxli init`：仅由运行时代码通过
+// newInitCommand 注册隐藏命令 `licore init`：仅由运行时代码通过
 // /proc/self/exe 重执行触发，不面向用户。
 func newInitCommand(_ io.Writer) *cobra.Command {
 	return &cobra.Command{

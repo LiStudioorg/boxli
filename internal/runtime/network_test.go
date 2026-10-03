@@ -10,12 +10,12 @@ import (
 )
 
 func TestNetEnvRoundTrip(t *testing.T) {
-	env := NetEnv(network.ModeBridge, "abc123def456", "boxli0", "172.18.0.2", "172.18.0.1", "web", 16)
+	env := NetEnv(network.ModeBridge, "abc123def456", "licore0", "172.18.0.2", "172.18.0.1", "web", 16)
 	mode, cid, name, ip, gw, host, prefix, ok := parseNetEnv(env)
 	if !ok {
 		t.Fatal("解析失败")
 	}
-	if *mode != network.ModeBridge || cid != "abc123def456" || name != "boxli0" ||
+	if *mode != network.ModeBridge || cid != "abc123def456" || name != "licore0" ||
 		ip != "172.18.0.2" || gw != "172.18.0.1" || host != "web" || prefix != 16 {
 		t.Fatalf("回读不一致: mode=%s cid=%s name=%s ip=%s gw=%s host=%s prefix=%d",
 			*mode, cid, name, ip, gw, host, prefix)

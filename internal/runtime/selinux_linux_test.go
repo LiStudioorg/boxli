@@ -36,9 +36,9 @@ func TestReadSELinuxExecContext(t *testing.T) {
 		{
 			name: "enforcing-context",
 			setup: func(t *testing.T) string {
-				return writeTempAttr(t, "u:r:boxli:s0\n")
+				return writeTempAttr(t, "u:r:licore:s0\n")
 			},
-			wantCtx: "u:r:boxli:s0",
+			wantCtx: "u:r:licore:s0",
 			wantOK:  true,
 		},
 		{
@@ -132,14 +132,14 @@ func TestReadSELinuxExecContextEINVALIsSkip(t *testing.T) {
 func TestApplySELinuxExecContext(t *testing.T) {
 	t.Run("writes-context", func(t *testing.T) {
 		p := filepath.Join(t.TempDir(), "exec")
-		if err := applySELinuxExecContext(p, "u:r:boxli:s0"); err != nil {
+		if err := applySELinuxExecContext(p, "u:r:licore:s0"); err != nil {
 			t.Fatalf("写入失败: %v", err)
 		}
 		got, err := os.ReadFile(p)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if string(got) != "u:r:boxli:s0" {
+		if string(got) != "u:r:licore:s0" {
 			t.Fatalf("内容 = %q", got)
 		}
 	})
@@ -232,14 +232,14 @@ func TestInheritSELinuxContextReadOnlyDegrades(t *testing.T) {
 func TestInheritSELinuxContextSuccess(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "exec")
-	if err := os.WriteFile(p, []byte("u:r:boxli:s0\n"), 0o644); err != nil {
+	if err := os.WriteFile(p, []byte("u:r:licore:s0\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	old := selinuxAttrExec
 	selinuxAttrExec = p
 	t.Cleanup(func() { selinuxAttrExec = old })
 
-	if got := inheritSELinuxContext(); got != "u:r:boxli:s0" {
+	if got := inheritSELinuxContext(); got != "u:r:licore:s0" {
 		t.Fatalf("应返回继承的上下文, got %q", got)
 	}
 	// 写回后文件内容应仍是该上下文（无换行）。
@@ -247,8 +247,8 @@ func TestInheritSELinuxContextSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(data) != "u:r:boxli:s0" {
-		t.Fatalf("写回内容 = %q, 期望 %q", data, "u:r:boxli:s0")
+	if string(data) != "u:r:licore:s0" {
+		t.Fatalf("写回内容 = %q, 期望 %q", data, "u:r:licore:s0")
 	}
 }
 
@@ -274,7 +274,7 @@ func TestSELinuxNoGlobalStateChange(t *testing.T) {
 		for _, f := range forbidden {
 			if strings.Contains(code, f) {
 				t.Errorf("%s 代码中出现被禁止的 SELinux 全局状态访问 %q："+
-					"Boxli 只允许读写自身进程的 attr/exec，绝不改动全局 SELinux 状态", path, f)
+					"LiCore 只允许读写自身进程的 attr/exec，绝不改动全局 SELinux 状态", path, f)
 			}
 		}
 	}

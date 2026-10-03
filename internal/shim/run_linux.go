@@ -38,9 +38,9 @@ var startWithFn = runtime.StartWith
 // Run 是 shim 主循环：启动容器 → 写状态 → 按 restart 策略决定重启或退出。
 //
 // 停止语义（两条路径，与 doc.go 一致）：
-//   - 用户 stop：`boxli stop` 先写 stopped-by-user 标记再向容器 init 发信号；
+//   - 用户 stop：`licore stop` 先写 stopped-by-user 标记再向容器 init 发信号；
 //     init 退出后 shim 观察到标记，退出循环并保留标记（always 容器由下次
-//     `boxli start`/`boot` 清除标记重新拉起）。
+//     `licore start`/`boot` 清除标记重新拉起）。
 //   - 直接 SIGTERM shim（systemd ExecStop 等）：shim 经 StartOptions.StopCh
 //     让 runtime 向 init 转发 SIGTERM（宽限后 SIGKILL），不重启。
 //
@@ -151,7 +151,7 @@ func Run(ctx context.Context, o *Options) error {
 func Reexec(storeRoot, id string) (*os.Process, error) {
 	self, err := os.Executable()
 	if err != nil {
-		return nil, fmt.Errorf("定位 boxli 可执行文件: %w", err)
+		return nil, fmt.Errorf("定位 licore 可执行文件: %w", err)
 	}
 	lf, err := os.OpenFile(LogPath(storeRoot, id), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
@@ -177,7 +177,7 @@ func Reexec(storeRoot, id string) (*os.Process, error) {
 	return p, nil
 }
 
-// RunFromEnv 供 main 分流：从 BOXLI_* 环境变量装配并进入 shim 主循环。
+// RunFromEnv 供 main 分流：从 LICORE_* 环境变量装配并进入 shim 主循环。
 func RunFromEnv(ctx context.Context) error {
 	if !IsShimProcess() {
 		return ErrShimNotRequested
@@ -199,9 +199,9 @@ func RunFromEnv(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("打开容器日志失败: %w", err)
 	}
-	// shim 是脱离终端的后台进程：未显式指定 BOXLI_LOG 时默认 Info 级，
+	// shim 是脱离终端的后台进程：未显式指定 LICORE_LOG 时默认 Info 级，
 	// 让重启/停止等生命周期事件进入容器日志。
-	if os.Getenv("BOXLI_LOG") == "" {
+	if os.Getenv("LICORE_LOG") == "" {
 		slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
 	}
 	return Run(ctx, &Options{Store: st, Cfg: cfg, Stdout: lf, Stderr: lf})

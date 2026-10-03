@@ -16,7 +16,7 @@ import (
 	"github.com/LiStudioorg/licore/internal/store"
 )
 
-// newImagesCommand 实现 `boxli images`：从 store 的 state.json 列出本地镜像。
+// newImagesCommand 实现 `licore images`：从 store 的 state.json 列出本地镜像。
 func newImagesCommand(out io.Writer) *cobra.Command {
 	var (
 		quiet  bool
@@ -26,7 +26,7 @@ func newImagesCommand(out io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "images",
 		Aliases: []string{"image", "im"},
-		Short:   "列出本地 .boxli 镜像",
+		Short:   "列出本地 .licore 镜像",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			st, err := store.Open(root)
@@ -42,7 +42,7 @@ func newImagesCommand(out io.Writer) *cobra.Command {
 	}
 	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "只输出镜像引用 name:version")
 	cmd.Flags().StringVar(&format, "format", "", "Go 模板自定义输出，例如 '{{.Ref}} {{.Architecture}}'")
-	cmd.Flags().StringVar(&root, "data-dir", "", "数据目录（默认 $BOXLI_HOME 或 ~/.boxli）")
+	cmd.Flags().StringVar(&root, "data-dir", "", "数据目录（默认 $LICORE_HOME 或 ~/.licore）")
 	return cmd
 }
 
@@ -62,7 +62,7 @@ func renderImages(w io.Writer, infos []store.ImageInfo, quiet bool, format strin
 		if quiet || format != "" {
 			return nil // 机器可读模式：无数据即无输出
 		}
-		fmt.Fprintln(w, "暂无本地镜像（运行 boxli pull <文件.boxli> 导入）")
+		fmt.Fprintln(w, "暂无本地镜像（运行 licore pull <文件.licore> 导入）")
 		return nil
 	}
 
@@ -84,11 +84,11 @@ func renderImages(w io.Writer, infos []store.ImageInfo, quiet bool, format strin
 	case format != "":
 		tmpl, err := template.New("images").Parse(format)
 		if err != nil {
-			return fmt.Errorf("boxli images: --format 模板非法: %w", err)
+			return fmt.Errorf("licore images: --format 模板非法: %w", err)
 		}
 		for _, r := range rows {
 			if err := tmpl.Execute(w, r); err != nil {
-				return fmt.Errorf("boxli images: 渲染失败: %w", err)
+				return fmt.Errorf("licore images: 渲染失败: %w", err)
 			}
 			fmt.Fprintln(w)
 		}
@@ -104,7 +104,7 @@ func renderImages(w io.Writer, infos []store.ImageInfo, quiet bool, format strin
 				r.Repository, r.Tag, r.Architecture, r.Layers, r.Size, r.Created)
 		}
 		if err := tw.Flush(); err != nil {
-			return fmt.Errorf("boxli images: 输出失败: %w", err)
+			return fmt.Errorf("licore images: 输出失败: %w", err)
 		}
 	}
 	return nil

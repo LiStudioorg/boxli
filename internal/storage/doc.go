@@ -1,7 +1,7 @@
 // Copyright (C) 2026 LiStudioorg
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Package storage 实现 .boxli 层的解包与合并（docs/image-spec.md 第 2、5 节）。
+// Package storage 实现 .licore 层的解包与合并（docs/image-spec.md 第 2、5 节）。
 //
 // 两个阶段：
 //

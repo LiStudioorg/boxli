@@ -20,7 +20,7 @@ import (
 	"github.com/LiStudioorg/licore/internal/image"
 )
 
-// ---------- 测试 fixture：构造合法 .boxli 文件 ----------
+// ---------- 测试 fixture：构造合法 .licore 文件 ----------
 
 func sha(s []byte) string {
 	sum := sha256.Sum256(s)
@@ -48,8 +48,8 @@ func makeLayer(t *testing.T, content string) []byte {
 	return buf.Bytes()
 }
 
-// buildValidBoxli 在 t.TempDir() 里生成一个合法 .boxli，返回文件路径。
-func buildValidBoxli(t *testing.T) string {
+// buildValidLiCore 在 t.TempDir() 里生成一个合法 .licore，返回文件路径。
+func buildValidLiCore(t *testing.T) string {
 	t.Helper()
 	layer := makeLayer(t, "hi")
 	cfg := []byte(`{"entrypoint":["/bin/sh"]}`)
@@ -79,7 +79,7 @@ func buildValidBoxli(t *testing.T) string {
 		image.BlobsDir + "sha256-" + hx: cfg,
 	}
 
-	path := filepath.Join(t.TempDir(), "app.boxli")
+	path := filepath.Join(t.TempDir(), "app.licore")
 	f, err := os.Create(path)
 	if err != nil {
 		t.Fatal(err)
@@ -106,7 +106,7 @@ func buildValidBoxli(t *testing.T) string {
 // ---------- 用例 ----------
 
 func TestPutAndExists(t *testing.T) {
-	src := buildValidBoxli(t)
+	src := buildValidLiCore(t)
 	st := &Store{Root: t.TempDir()}
 
 	ok, err := st.Exists("alice/myapp", "1.0.0")
@@ -127,7 +127,7 @@ func TestPutAndExists(t *testing.T) {
 	}
 
 	// 三个落地文件都存在。
-	for _, f := range []string{"source.boxli", "index.json", "state.json"} {
+	for _, f := range []string{"source.licore", "index.json", "state.json"} {
 		if _, err := os.Stat(filepath.Join(st.ImageDir("alice/myapp", "1.0.0"), f)); err != nil {
 			t.Errorf("缺少落地文件 %s: %v", f, err)
 		}
@@ -139,14 +139,14 @@ func TestPutAndExists(t *testing.T) {
 	if !stt.LayersVerified || stt.Ref != "alice/myapp:1.0.0" || stt.SourcePath != src {
 		t.Errorf("state.json 内容异常: %+v", stt)
 	}
-	// source.boxli 与源文件字节一致。
+	// source.licore 与源文件字节一致。
 	if stt.SourceFileBytes == 0 {
 		t.Error("SourceFileBytes 为空")
 	}
 }
 
 func TestPutTwiceRequiresForce(t *testing.T) {
-	src := buildValidBoxli(t)
+	src := buildValidLiCore(t)
 	st := &Store{Root: t.TempDir()}
 	if _, err := st.Put(src, false); err != nil {
 		t.Fatal(err)
@@ -160,7 +160,7 @@ func TestPutTwiceRequiresForce(t *testing.T) {
 }
 
 func TestPutRejectsCorrupt(t *testing.T) {
-	src := buildValidBoxli(t)
+	src := buildValidLiCore(t)
 	// 破坏 .tar.gz 条目名（ASCII），大小不变；该字节同时是层内容的一部分，
 	// 导致层摘要必变且条目更名后 index 找不到层。
 	data, err := os.ReadFile(src)
@@ -172,7 +172,7 @@ func TestPutRejectsCorrupt(t *testing.T) {
 	} else {
 		data[len(data)/2] ^= 0xFF
 	}
-	bad := filepath.Join(t.TempDir(), "bad.boxli")
+	bad := filepath.Join(t.TempDir(), "bad.licore")
 	if err := os.WriteFile(bad, data, 0o644); err != nil {
 		t.Fatal(err)
 	}

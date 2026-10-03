@@ -154,12 +154,12 @@ func TestParseProjectFull(t *testing.T) {
 
 // TestParseProjectBoxfile 覆盖第三个互斥字段 boxfile。
 func TestParseProjectBoxfile(t *testing.T) {
-	p, err := ParseProject([]byte("services:\n  app:\n    boxfile: base.boxli\n"))
+	p, err := ParseProject([]byte("services:\n  app:\n    boxfile: base.licore\n"))
 	if err != nil {
 		t.Fatalf("ParseProject 返回错误: %v", err)
 	}
-	if got := p.Services["app"].Boxfile; got != "base.boxli" {
-		t.Fatalf("Boxfile = %q，期望 %q", got, "base.boxli")
+	if got := p.Services["app"].Boxfile; got != "base.licore" {
+		t.Fatalf("Boxfile = %q，期望 %q", got, "base.licore")
 	}
 }
 
@@ -184,7 +184,7 @@ func TestLoadFileResolvesDirAndName(t *testing.T) {
 	if err := os.MkdirAll(projDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(projDir, "boxli-compose.yaml")
+	path := filepath.Join(projDir, "licore-compose.yaml")
 	src := "services:\n  app:\n    build: ./ctx\n    dev:\n      watch:\n        - ./src\n"
 	if err := os.WriteFile(path, []byte(src), 0o600); err != nil {
 		t.Fatal(err)
@@ -227,7 +227,7 @@ func TestLoadFileExplicitNameWins(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(dir, "boxli-compose.yaml")
+	path := filepath.Join(dir, "licore-compose.yaml")
 	if err := os.WriteFile(path, []byte("name: explicit\nservices:\n  app:\n    image: a/b:1\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -314,7 +314,7 @@ func TestValidateServiceTargets(t *testing.T) {
 		},
 		{
 			"image 与 boxfile 同时设置",
-			"services:\n  app:\n    image: a/b:1\n    boxfile: b.boxli\n",
+			"services:\n  app:\n    image: a/b:1\n    boxfile: b.licore\n",
 			"只能三选一",
 		},
 		{

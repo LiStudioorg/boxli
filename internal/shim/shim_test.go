@@ -82,7 +82,7 @@ func TestRunFromEnvGuards(t *testing.T) {
 
 // TestRunFromEnvEnforcement 覆盖 RunFromEnv 的早退分支（无需真实 fork）。
 func TestRunFromEnvEnforcement(t *testing.T) {
-	// 非 shim 进程（未设 BOXLI_SHIM）→ ErrShimNotRequested。
+	// 非 shim 进程（未设 LICORE_SHIM）→ ErrShimNotRequested。
 	os.Unsetenv(EnvMarker)
 	if err := RunFromEnv(context.Background()); !errors.Is(err, ErrShimNotRequested) {
 		t.Fatalf("非 shim 期望 ErrShimNotRequested，实得 %v", err)

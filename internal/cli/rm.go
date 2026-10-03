@@ -13,7 +13,7 @@ import (
 	"github.com/LiStudioorg/licore/internal/store"
 )
 
-// newRmCommand 实现 `boxli rm`：删除已停止容器的状态目录。
+// newRmCommand 实现 `licore rm`：删除已停止容器的状态目录。
 func newRmCommand(out io.Writer) *cobra.Command {
 	var (
 		dataDir string
@@ -21,11 +21,11 @@ func newRmCommand(out io.Writer) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "rm [flags] <容器ID|名字>...",
-		Short: "删除已停止的容器（运行中需先 boxli stop）",
+		Short: "删除已停止的容器（运行中需先 licore stop）",
 		Long: "删除容器：移除 <数据目录>/containers/<id>/ 下的配置、运行状态、日志与\n" +
 			"该容器独占的 rootfs。共享的镜像层缓存（layers/sha256/<hex>）保留，\n" +
 			"其他容器仍可复用。\n\n" +
-			"运行中的容器会拒绝删除并提示先 boxli stop；-f 可强制删除（先停止再删除）。",
+			"运行中的容器会拒绝删除并提示先 licore stop；-f 可强制删除（先停止再删除）。",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			defer cleanupCmdContext(cmd)
@@ -42,7 +42,7 @@ func newRmCommand(out io.Writer) *cobra.Command {
 						return fmt.Errorf("rm 已取消")
 					}
 					// 多个目标时逐个报错，全部处理完再以非零码收敛。
-					fmt.Fprintf(cmd.ErrOrStderr(), "boxli rm: %v\n", err)
+					fmt.Fprintf(cmd.ErrOrStderr(), "licore rm: %v\n", err)
 					failed++
 					continue
 				}
@@ -58,7 +58,7 @@ func newRmCommand(out io.Writer) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&dataDir, "data-dir", "", "数据目录（默认 $BOXLI_HOME 或 ~/.boxli）")
+	cmd.Flags().StringVar(&dataDir, "data-dir", "", "数据目录（默认 $LICORE_HOME 或 ~/.licore）")
 	cmd.Flags().BoolVarP(&force, "force", "f", false, "运行中也删除（先停止）")
 	return cmd
 }

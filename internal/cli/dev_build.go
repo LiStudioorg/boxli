@@ -22,11 +22,11 @@ import (
 	"github.com/LiStudioorg/licore/internal/store"
 )
 
-// newBuildCommand 实现 `boxli build`：解析 Boxfile → 真正调用 build.Build()
-// 构造 .boxli 镜像 → 自动 pull 导入本地 store。
+// newBuildCommand 实现 `licore build`：解析 Boxfile → 真正调用 build.Build()
+// 构造 .licore 镜像 → 自动 pull 导入本地 store。
 //
-//	boxli build -t demo:v1 .
-//	boxli build -f Boxfile -t demo:v1 --context ./src
+//	licore build -t demo:v1 .
+//	licore build -f Boxfile -t demo:v1 --context ./src
 //
 // 构建上下文**必须显式给出**（位置参数或 --context 二选一），理由见
 // resolveBuildContext 的注释：隐式默认 cwd 是"最坏失败模式"。
@@ -41,10 +41,10 @@ func newBuildCommand(out io.Writer) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "build [--file Boxfile] [--tag NAME:VERSION] (--context DIR | <context>)",
-		Short: "根据 Boxfile 构建 .boxli 镜像并入本地 store",
+		Short: "根据 Boxfile 构建 .licore 镜像并入本地 store",
 		Long: "解析 Boxfile（FROM/COPY/ENV/WORKDIR/ENTRYPOINT/CMD/EXPOSE/VOLUME/" +
-			"LABEL/USER/ARG），对基础镜像或 scratch 执行指令，构造一个 .boxli " +
-			"镜像并自动 boxli pull 导入本地 store。\n" +
+			"LABEL/USER/ARG），对基础镜像或 scratch 执行指令，构造一个 .licore " +
+			"镜像并自动 licore pull 导入本地 store。\n" +
 			"构建上下文（COPY 源目录）必须显式指定：末尾位置参数或 --context，" +
 			"想用当前目录就传 \".\"。",
 		Args: cobra.MaximumNArgs(1),
@@ -93,9 +93,9 @@ func newBuildCommand(out io.Writer) *cobra.Command {
 				}
 			}
 
-			// 产出临时 .boxli（Build 内部用 base/OutPath 派生 name:version，
+			// 产出临时 .licore（Build 内部用 base/OutPath 派生 name:version，
 			// 我们把 -t 传给它写出正确清单；导入由 ImportImage 决定落位 ref）。
-			outTmp, err := os.CreateTemp("", "boxli-build-*.boxli")
+			outTmp, err := os.CreateTemp("", "licore-build-*.licore")
 			if err != nil {
 				return fmt.Errorf("build: 创建输出临时文件: %w", err)
 			}
@@ -105,7 +105,7 @@ func newBuildCommand(out io.Writer) *cobra.Command {
 
 			if noCache {
 				// 无缓存语义：构建始终从基础镜像重建，不加可复用层。
-				slog.Debug("build: --no-cache 提示（Boxli 构建当前始终重打追加层）")
+				slog.Debug("build: --no-cache 提示（LiCore 构建当前始终重打追加层）")
 			}
 			_ = slim
 
@@ -122,7 +122,7 @@ func newBuildCommand(out io.Writer) *cobra.Command {
 				return err
 			}
 
-			// 自动导入本地 store（等价 boxli pull）。
+			// 自动导入本地 store（等价 licore pull）。
 			dstRef := tag
 			loaded, err := ImportImage(st, res.Path, dstRef, true /* 覆盖重构建同名 */)
 			if err != nil {
@@ -137,8 +137,8 @@ func newBuildCommand(out io.Writer) *cobra.Command {
 	cmd.Flags().StringVarP(&file, "file", "f", "", "Boxfile 路径（默认 <context>/Boxfile 或 ./Boxfile）")
 	cmd.Flags().StringVarP(&tag, "tag", "t", "", "镜像引用 NAME:VERSION（默认由 Boxfile FROM 或文件名派生）")
 	cmd.Flags().StringVarP(&contextDir, "context", "", "", "构建上下文目录（COPY 源相对它解析；与末尾位置参数二选一）")
-	cmd.Flags().StringVar(&dataDir, "data-dir", "", "数据目录（默认 $BOXLI_HOME 或 ~/.boxli）")
-	cmd.Flags().BoolVar(&noCache, "no-cache", false, "禁用构建缓存（Boxli 始终从基础镜像重建）")
+	cmd.Flags().StringVar(&dataDir, "data-dir", "", "数据目录（默认 $LICORE_HOME 或 ~/.licore）")
+	cmd.Flags().BoolVar(&noCache, "no-cache", false, "禁用构建缓存（LiCore 始终从基础镜像重建）")
 	cmd.Flags().BoolVar(&slim, "slim", false, "构建精简镜像（当前与常规构建同）")
 	return cmd
 }
@@ -172,25 +172,25 @@ func resolveBuildContext(flagCtx string, args []string) (string, error) {
 	case pos != "":
 		return pos, nil
 	default:
-		return "", fmt.Errorf("build: 必须显式指定构建上下文（COPY 的源目录），当前目录就传 \".\"，例如：boxli build -t NAME:VERSION <context>: %w",
+		return "", fmt.Errorf("build: 必须显式指定构建上下文（COPY 的源目录），当前目录就传 \".\"，例如：licore build -t NAME:VERSION <context>: %w",
 			build.ErrNoContext)
 	}
 }
 
-// resolveBuildBase 把 FROM 引用解析为本地已导入镜像的 source.boxli 路径。
+// resolveBuildBase 把 FROM 引用解析为本地已导入镜像的 source.licore 路径。
 func resolveBuildBase(st *store.Store, ref string) (string, error) {
 	name, version, ok := splitRefC(ref)
 	if !ok {
-		return "", fmt.Errorf("build: 基础镜像引用 %q 应为 NAME:VERSION（先 boxli pull）", ref)
+		return "", fmt.Errorf("build: 基础镜像引用 %q 应为 NAME:VERSION（先 licore pull）", ref)
 	}
 	exists, err := st.Exists(name, version)
 	if err != nil {
 		return "", err
 	}
 	if !exists {
-		return "", fmt.Errorf("build: 基础镜像 %s 未导入本地，请先 boxli pull %s.boxli", ref, name+"_"+version)
+		return "", fmt.Errorf("build: 基础镜像 %s 未导入本地，请先 licore pull %s.licore", ref, name+"_"+version)
 	}
-	return filepath.Join(st.ImageDir(name, version), "source.boxli"), nil
+	return filepath.Join(st.ImageDir(name, version), "source.licore"), nil
 }
 
 // splitBuildTag 拆分 "name:version"；空返回 ("","")。
@@ -214,7 +214,7 @@ func splitRefC(ref string) (string, string, bool) {
 	return ref[:i], ref[i+1:], true
 }
 
-// newDevCommand 实现 `boxli dev`：文件热重载。
+// newDevCommand 实现 `licore dev`：文件热重载。
 // 监听路径，文件变化时去抖并输出批次（真实重建/重启由运行时编排）。
 func newDevCommand(out io.Writer) *cobra.Command {
 	var watch []string

@@ -21,7 +21,7 @@ import (
 	"syscall"
 )
 
-// minKernelMajor / minKernelMinor 是 Boxli 官方支持的最低内核版本。
+// minKernelMajor / minKernelMinor 是 LiCore 官方支持的最低内核版本。
 // 低于它时 pivot_root 之后的挂载语义与 cgroup v2 特性都不再可靠。
 const (
 	minKernelMajor = 5
@@ -611,7 +611,7 @@ func cgroupMountPointOf(fstype string) string {
 }
 
 // systemdCheck 检查 systemd 是否可用。缺失 systemd 只是警告：
-// Boxli 的主流程（run/stop/ps）不依赖它，只有开机自启需要。
+// LiCore 的主流程（run/stop/ps）不依赖它，只有开机自启需要。
 func systemdCheck() Check {
 	c := Check{ID: CheckSystemdAvailable, Title: "systemd 可用性"}
 
@@ -630,15 +630,15 @@ func systemdCheck() Check {
 	case runDir:
 		c.Status = StatusWarn
 		c.Detail = "/run/systemd/system 存在，但 PATH 中未找到 systemctl"
-		c.Hint = "安装 systemd 工具或在 root 的 PATH 中运行；开机自启可手动写入 /etc/systemd/system/boxli.service"
+		c.Hint = "安装 systemd 工具或在 root 的 PATH 中运行；开机自启可手动写入 /etc/systemd/system/licore.service"
 	case pathErr == nil:
 		c.Status = StatusWarn
 		c.Detail = fmt.Sprintf("未发现 /run/systemd/system（当前 PID 1 不是 systemd），但存在 systemctl=%s", path)
-		c.Hint = "在容器/CI 中属正常现象；开机自启用 `boxli boot enable` 会提示手动注册，可改用 cron @reboot 调 `boxli boot`"
+		c.Hint = "在容器/CI 中属正常现象；开机自启用 `licore boot enable` 会提示手动注册，可改用 cron @reboot 调 `licore boot`"
 	default:
 		c.Status = StatusWarn
 		c.Detail = "本机既无 /run/systemd/system 也无 systemctl"
-		c.Hint = "开机自启不可用，可改用 cron @reboot 调用 `boxli boot`；容器运行不受影响"
+		c.Hint = "开机自启不可用，可改用 cron @reboot 调用 `licore boot`；容器运行不受影响"
 	}
 	return c
 }
@@ -662,14 +662,14 @@ func dataDirCheck(version string) Check {
 	if dir == "" {
 		c.Status = StatusSkip
 		c.Detail = "无法确定数据目录（HOME 不可用）"
-		c.Hint = "显式指定：`boxli --data-dir /path/to/data ...` 或设置 $BOXLI_HOME"
+		c.Hint = "显式指定：`licore --data-dir /path/to/data ...` 或设置 $LICORE_HOME"
 		return c
 	}
 
 	st, err := os.Stat(dir)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
-		// boxli 会在首次使用时创建数据目录；父目录可写即视为通过。
+		// licore 会在首次使用时创建数据目录；父目录可写即视为通过。
 		parent := filepath.Dir(dir)
 		if dirWritable(parent) {
 			c.Status = StatusOK
@@ -714,7 +714,7 @@ func dataDirCheck(version string) Check {
 		dir, humanBytes(int64(free)), humanBytes(int64(total)), usedPct)
 	if total > 0 && usedPct >= 90 {
 		c.Status = StatusWarn
-		c.Hint = fmt.Sprintf("磁盘接近写满，清理镜像与容器：`boxli rm -a` 或删除 %s/layers 中的无用层", dir)
+		c.Hint = fmt.Sprintf("磁盘接近写满，清理镜像与容器：`licore rm -a` 或删除 %s/layers 中的无用层", dir)
 		return c
 	}
 	c.Status = StatusOK
@@ -735,7 +735,7 @@ func layersCheck() Check {
 	if !isDir(layers) {
 		c.Status = StatusSkip
 		c.Detail = fmt.Sprintf("%s 不存在（尚未 pull 过任何镜像）", layers)
-		c.Hint = "`boxli pull <file.boxli>` 后层缓存会出现在此处"
+		c.Hint = "`licore pull <file.licore>` 后层缓存会出现在此处"
 		return c
 	}
 
@@ -785,7 +785,7 @@ func layersCheck() Check {
 	return c
 }
 
-// binaryCheck 检查 boxli 版本与可执行文件路径。version 由 CLI 经
+// binaryCheck 检查 licore 版本与可执行文件路径。version 由 CLI 经
 // Options.Version 注入（最终来源是 main 的 -ldflags -X main.version）；
 // 为空说明是源码直跑（go run），属于提示而非错误。
 func binaryCheck(version string) Check {
@@ -794,7 +794,7 @@ func binaryCheck(version string) Check {
 	if err != nil {
 		c.Status = StatusWarn
 		c.Detail = fmt.Sprintf("无法确定可执行文件路径: %v", err)
-		c.Hint = "用绝对路径重新执行 boxli，或从发布包安装到 /usr/local/bin"
+		c.Hint = "用绝对路径重新执行 licore，或从发布包安装到 /usr/local/bin"
 		return c
 	}
 	c.Status = StatusOK

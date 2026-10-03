@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// 本文件实现 boxli-compose.yml 与 Boxfile 的全部 lint 规则。规则之间互不依赖，
+// 本文件实现 licore-compose.yml 与 Boxfile 的全部 lint 规则。规则之间互不依赖，
 // 单条规则发现的问题不会中断其他规则；语法层问题先产出 parse 诊断，语义规则
 // 有能力时仍在已解析出的节点上继续执行。
 
@@ -420,10 +420,10 @@ func lintBoxfile(file string, data []byte) *Result {
 			}
 		}
 		if op == "RUN" || op == "HEALTHCHECK" || op == "ONBUILD" {
-			// boxli 构建器不执行任何容器内命令（无 docker 式 RUN 阶段），
+			// licore 构建器不执行任何容器内命令（无 docker 式 RUN 阶段），
 			// 这些指令写在 Boxfile 里不会生效，必须提示而不是静默忽略。
 			res.add(file, no, SeverityWarning, RuleBoxfileRunUnsupported,
-				"%s 在 boxli 中不会执行（boxli 构建不做容器内命令执行），请把准备工作写进基础镜像", op)
+				"%s 在 licore 中不会执行（licore 构建不做容器内命令执行），请把准备工作写进基础镜像", op)
 		}
 		// ARG 变量的使用情况：按名字边界匹配 ${NAME} / $NAME。
 		for name, declLine := range declaredArgs {

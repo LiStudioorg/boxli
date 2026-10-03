@@ -28,7 +28,7 @@ import (
 //     并在 Warnings 里说明，绝不返回 error，也绝不让 doctor 判定为失败。
 //   - build tag 用 `linux` 而非 `android`：Go 在 GOOS=android 时会同时满足
 //     linux 标签，因此本文件在 Android 上自动参与编译；反过来用 `android`
-//     标签会让桌面 Linux 上的单元测试与 `boxli doctor` 完全看不到这段逻辑。
+//     标签会让桌面 Linux 上的单元测试与 `licore doctor` 完全看不到这段逻辑。
 //     是否真的运行在 Android 上，由 /system/build.prop 等特征在运行时判断。
 
 // CgroupMode 描述宿主的 cgroup 层级形态。
@@ -347,7 +347,7 @@ func deriveAndroidWarnings(env *AndroidEnv) {
 	}
 	if env.IsAndroid && env.SELinux == SELinuxEnforcing {
 		env.Warnings = append(env.Warnings,
-			"SELinux 为 enforcing：容器内进程可能被策略拦截；Boxli 会尝试设置 exec 上下文，失败时不影响引擎自身运行")
+			"SELinux 为 enforcing：容器内进程可能被策略拦截；LiCore 会尝试设置 exec 上下文，失败时不影响引擎自身运行")
 	}
 	if env.IsAndroid && !env.UserNS {
 		env.Warnings = append(env.Warnings,
@@ -423,7 +423,7 @@ func (e *AndroidEnv) Summary() string {
 	return strings.Join(parts, " / ")
 }
 
-// requiredNamespaces 是容器运行**必需**的 namespace。缺任一项 Boxli 无法提供
+// requiredNamespaces 是容器运行**必需**的 namespace。缺任一项 LiCore 无法提供
 // 真隔离，nsplan 会以 ErrNoNamespaces 硬失败——因此 doctor 记 StatusFail 而非警告。
 var requiredNamespaces = []string{"pid", "mnt", "uts", "ipc"}
 
@@ -461,7 +461,7 @@ func androidEnvCheck(env *AndroidEnv) Check {
 
 	if missing := missingRequiredNamespaces(env); len(missing) > 0 {
 		c.Status = StatusFail
-		c.Hint = "内核缺少 " + strings.Join(missing, "/") + " namespace，Boxli 无法提供真隔离" +
+		c.Hint = "内核缺少 " + strings.Join(missing, "/") + " namespace，LiCore 无法提供真隔离" +
 			"（对应 ErrNoNamespaces，官方不做无隔离的假容器）；请更换开启了 CONFIG_NAMESPACES 的 GKI 内核或 ROM"
 		return c
 	}
@@ -485,7 +485,7 @@ func androidEnvCheck(env *AndroidEnv) Check {
 	}
 	if env.SELinux == SELinuxEnforcing {
 		c.Status = StatusWarn
-		c.Hint = "enforcing 下容器内进程可能被策略拦截（Boxli 不改策略、不调 setenforce）；" +
+		c.Hint = "enforcing 下容器内进程可能被策略拦截（LiCore 不改策略、不调 setenforce）；" +
 			"排查用 `dmesg | grep avc` 看 scontext/tcontext，见 docs/android-root.md 第 4.5 节"
 		return c
 	}

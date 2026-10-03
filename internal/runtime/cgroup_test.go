@@ -7,7 +7,7 @@ import "testing"
 
 func TestCgroupEnv(t *testing.T) {
 	env := CgroupEnv("mycontainer123")
-	if len(env) != 1 || env[0] != "BOXLI_CGROUP_ID=mycontainer123" {
+	if len(env) != 1 || env[0] != "LICORE_CGROUP_ID=mycontainer123" {
 		t.Fatalf("CgroupEnv 错误: %v", env)
 	}
 	if got := cgroupIDFromEnv(env); got != "mycontainer123" {

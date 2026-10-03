@@ -19,7 +19,7 @@ import (
 	"github.com/LiStudioorg/licore/internal/store"
 )
 
-// newRunCommand 实现 `boxli run`：镜像查找 → 层解包合并 rootfs → 写容器
+// newRunCommand 实现 `licore run`：镜像查找 → 层解包合并 rootfs → 写容器
 // 状态 → 前台持有或后台 fork shim。编排逻辑在 internal/engine。
 func newRunCommand(out io.Writer) *cobra.Command {
 	var opts struct {
@@ -54,7 +54,7 @@ func newRunCommand(out io.Writer) *cobra.Command {
 		Long: "创建并启动容器：镜像查找 → 层解包合并 rootfs → 写容器状态 → 启动。\n\n" +
 			"默认前台运行，stdio 直连容器，Ctrl+C 停止容器；-d 后台运行并打印容器 ID。\n\n" +
 			"注意：run 自身的 flag 必须写在镜像引用之前，镜像之后的内容一律作为容器命令\n" +
-			"原样传入（与 Docker 一致）。例如 `boxli run -e FOO=bar img sh -c 'echo $FOO'`。",
+			"原样传入（与 Docker 一致）。例如 `licore run -e FOO=bar img sh -c 'echo $FOO'`。",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			restart := store.Restart(opts.restart)
@@ -138,7 +138,7 @@ func newRunCommand(out io.Writer) *cobra.Command {
 		},
 	}
 	f := cmd.Flags()
-	// 容器命令里的 -c/-e 等必须原样透传（`boxli run img sh -c 'exit 1'`），
+	// 容器命令里的 -c/-e 等必须原样透传（`licore run img sh -c 'exit 1'`），
 	// 故第一个位置参数（镜像引用）之后不再解析 flag。
 	//
 	// 代价与 Docker 一致：所有 run 自己的 flag 必须写在镜像引用之前，
@@ -165,9 +165,9 @@ func newRunCommand(out io.Writer) *cobra.Command {
 	f.StringSliceVar(&opts.entrypoint, "entrypoint", nil, "覆盖镜像 entrypoint")
 	f.StringSliceVarP(&opts.ports, "publish", "p", nil, "端口映射 HOST:CONTAINER[:PROTO]")
 	f.StringSliceVarP(&opts.volumes, "volume", "v", nil, "卷挂载 SRC:TARGET[:ro]；SRC 可为宿主路径或命名卷，省略=匿名卷")
-	f.StringVar(&opts.network, "network", "boxli0", "接入网络：boxli0(bridge)|host|none|自定义")
+	f.StringVar(&opts.network, "network", "licore0", "接入网络：licore0(bridge)|host|none|自定义")
 	f.StringVar(&opts.ip, "ip", "", "指定容器 IP（默认自动分配）")
-	f.StringVar(&opts.dataDir, "data-dir", "", "数据目录（默认 $BOXLI_HOME 或 ~/.boxli）")
+	f.StringVar(&opts.dataDir, "data-dir", "", "数据目录（默认 $LICORE_HOME 或 ~/.licore）")
 	return cmd
 }
 

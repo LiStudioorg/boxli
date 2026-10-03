@@ -16,7 +16,7 @@ func seedImage(t *testing.T, s *Store, name, version, ref, pulledAt, arch string
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	st := `{"ref":"` + ref + `","pulledAt":"` + pulledAt + `","sourcePath":"/tmp/x.boxli","sourceSizeBytes":12345,"layersVerified":true}`
+	st := `{"ref":"` + ref + `","pulledAt":"` + pulledAt + `","sourcePath":"/tmp/x.licore","sourceSizeBytes":12345,"layersVerified":true}`
 	if err := os.WriteFile(filepath.Join(dir, "state.json"), []byte(st), 0o644); err != nil {
 		t.Fatal(err)
 	}

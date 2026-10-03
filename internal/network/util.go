@@ -24,15 +24,15 @@ func netIP4Bytes(s string) []byte {
 	return out // 非法时为 nil
 }
 
-// defaultStoreRoot 复用 store.Open 的数据目录规则：$BOXLI_HOME → ~/.boxli。
+// defaultStoreRoot 复用 store.Open 的数据目录规则：$LICORE_HOME → ~/.licore。
 func defaultStoreRoot() (string, error) {
-	root := os.Getenv("BOXLI_HOME")
+	root := os.Getenv("LICORE_HOME")
 	if root == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return "", fmt.Errorf("确定数据目录失败: %w", err)
 		}
-		root = filepath.Join(home, ".boxli")
+		root = filepath.Join(home, ".licore")
 	}
 	return root, nil
 }

@@ -18,10 +18,10 @@ import (
 	"github.com/LiStudioorg/licore/internal/store"
 )
 
-// newPullCommand 实现 `boxli pull`。
+// newPullCommand 实现 `licore pull`。
 //
-//	boxli pull ./myapp-1.0.boxli     # 从本地 .boxli 文件导入
-//	boxli pull alice/myapp:v1         # 从 Hub 拉取（需先 boxli login）
+//	licore pull ./myapp-1.0.licore     # 从本地 .licore 文件导入
+//	licore pull alice/myapp:v1         # 从 Hub 拉取（需先 licore login）
 func newPullCommand(out io.Writer) *cobra.Command {
 	var (
 		force   bool
@@ -29,8 +29,8 @@ func newPullCommand(out io.Writer) *cobra.Command {
 		hubFlag string
 	)
 	cmd := &cobra.Command{
-		Use:   "pull <file.boxli|NAME:VERSION>",
-		Short: "导入本地 .boxli 文件或从 Hub 拉取镜像",
+		Use:   "pull <file.licore|NAME:VERSION>",
+		Short: "导入本地 .licore 文件或从 Hub 拉取镜像",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if isHubRef(args[0]) {
@@ -40,8 +40,8 @@ func newPullCommand(out io.Writer) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&force, "force", false, "同 name/version 已存在时覆盖（本地文件）")
-	cmd.Flags().StringVar(&rootDir, "data-dir", "", "数据目录（默认 $BOXLI_HOME 或 ~/.boxli）")
-	cmd.Flags().StringVar(&hubFlag, "hub", "", "Hub 地址（默认 $BOXLI_HUB 或 http://127.0.0.1:3727）")
+	cmd.Flags().StringVar(&rootDir, "data-dir", "", "数据目录（默认 $LICORE_HOME 或 ~/.licore）")
+	cmd.Flags().StringVar(&hubFlag, "hub", "", "Hub 地址（默认 $LICORE_HUB 或 http://127.0.0.1:3727）")
 	return cmd
 }
 
@@ -56,14 +56,14 @@ func isHubRef(s string) bool {
 	return i > 0 && i < len(s)-1 && !strings.ContainsAny(s, "\\/")
 }
 
-// runHubPull 从 Hub 拉取镜像落地为 .boxli 文件，再走本地导入链路。
+// runHubPull 从 Hub 拉取镜像落地为 .licore 文件，再走本地导入链路。
 func runHubPull(out io.Writer, ref, hubFlag, rootDir string) error {
 	base := hubBaseURL(hubFlag)
 	c := newHubClient(base, rootDir)
 	if c.Token == "" {
-		return fmt.Errorf("pull: 未登录 %s，请先 boxli login", base)
+		return fmt.Errorf("pull: 未登录 %s，请先 licore login", base)
 	}
-	dst := filepath.Join(os.TempDir(), "boxli-pull-"+ref+".boxli")
+	dst := filepath.Join(os.TempDir(), "licore-pull-"+ref+".licore")
 	if err := c.Pull(ref, dst); err != nil {
 		return err
 	}
@@ -100,7 +100,7 @@ func suggestBoot(out io.Writer, st *store.Store) {
 	if _, err := os.Stat(marker); err == nil {
 		return // 已启用或已询问过
 	}
-	fmt.Fprint(out, "\n检测到 Boxli 尚未启用开机自启\n是否启用？启用后开机会自动拉起设置了 restart=always 的容器\n[y/N]: ")
+	fmt.Fprint(out, "\n检测到 LiCore 尚未启用开机自启\n是否启用？启用后开机会自动拉起设置了 restart=always 的容器\n[y/N]: ")
 	line, err := bufio.NewReader(os.Stdin).ReadString('\n')
 	ack := "declined\n"
 	switch {
@@ -126,7 +126,7 @@ func suggestBoot(out io.Writer, st *store.Store) {
 			}
 		}
 	default:
-		fmt.Fprintln(out, "已跳过。可随时执行 boxli boot enable 启用。")
+		fmt.Fprintln(out, "已跳过。可随时执行 licore boot enable 启用。")
 	}
 	if err := st.EnsureBootDir(); err != nil {
 		return

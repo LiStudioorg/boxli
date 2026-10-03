@@ -14,7 +14,7 @@ import (
 	"github.com/LiStudioorg/licore/internal/store"
 )
 
-// newStopCommand 实现 `boxli stop`：停止容器并标记 stopped-by-user。
+// newStopCommand 实现 `licore stop`：停止容器并标记 stopped-by-user。
 func newStopCommand(out io.Writer) *cobra.Command {
 	var (
 		dataDir string
@@ -51,7 +51,7 @@ func newStopCommand(out io.Writer) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&dataDir, "data-dir", "", "数据目录（默认 $BOXLI_HOME 或 ~/.boxli）")
+	cmd.Flags().StringVar(&dataDir, "data-dir", "", "数据目录（默认 $LICORE_HOME 或 ~/.licore）")
 	cmd.Flags().DurationVarP(&timeout, "time", "t", engine.DefaultStopTimeout,
 		"等待容器退出的宽限，超时后 SIGKILL")
 	// 容器 init 是 PID namespace 的 1 号进程：未安装 SIGTERM 处理时内核忽略

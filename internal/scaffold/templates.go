@@ -1,9 +1,9 @@
 // Copyright (C) 2026 LiStudioorg
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Package scaffold 负责 boxli 项目的脚手架（`boxli init`）与静态检查（`boxli lint`）。
+// Package scaffold 负责 licore 项目的脚手架（`licore init`）与静态检查（`licore lint`）。
 //
-// 脚手架产出两个文件：`Boxfile`（构建描述）与 `boxli-compose.yml`（本地编排），
+// 脚手架产出两个文件：`Boxfile`（构建描述）与 `licore-compose.yml`（本地编排），
 // 它们必须能被 internal/build 与 internal/compose 直接解析，并由本包自己的
 // lint 规则检查出零个 error 级诊断——"init 产出的项目开箱即 lint 干净"是硬约束。
 //
@@ -25,13 +25,13 @@ import (
 const BoxfileName = "Boxfile"
 
 // ComposeFileName 是脚手架生成的编排文件名（首选 .yml 扩展名）。
-const ComposeFileName = "boxli-compose.yml"
+const ComposeFileName = "licore-compose.yml"
 
 // ComposeFileNameAlt 是编排文件的备用扩展名，LintProject 会识别但 Init 不生成。
-const ComposeFileNameAlt = "boxli-compose.yaml"
+const ComposeFileNameAlt = "licore-compose.yaml"
 
 // BaseImage 是模板默认的基础镜像引用（自带 /bin/sh 的最小 rootfs）。
-const BaseImage = "boxli/base:latest"
+const BaseImage = "licore/base:latest"
 
 // DefaultProjectName 是 ComposeTemplate 收到空项目名时使用的名字。
 const DefaultProjectName = "myapp"
@@ -40,13 +40,13 @@ const DefaultProjectName = "myapp"
 const DefaultServiceName = "app"
 
 // ignoreDirectives 是模板 dev.ignore 中使用的目录名。
-// 这些目录在构建期由 .boxliignore 排除、在开发期由 dev watch 忽略，
+// 这些目录在构建期由 .licoreignore 排除、在开发期由 dev watch 忽略，
 // 两处必须保持一致，故用同一个变量渲染，避免模板漂移。
 var ignoreDirectives = []string{".git", "bin", "node_modules", "tmp"}
 
 // BoxfileTemplate 返回一份可直接构建的 Boxfile 模板：FROM/COPY/ENV/WORKDIR/
 // ENTRYPOINT/CMD 各一行，每行都带 `#` 说明，COPY 之前还有一段被注释掉的
-// .boxliignore 清单——构建期忽略规则写在 Boxfile 里（`boxli` 不读 .dockerignore）。
+// .licoreignore 清单——构建期忽略规则写在 Boxfile 里（`licore` 不读 .dockerignore）。
 //
 // service 为空时使用 DefaultServiceName（仅用于注释中的提示文本）。
 // 模板里的 COPY 源路径都是 `boxfile-src/...`，与项目根目录互不冲突。
@@ -56,8 +56,8 @@ func BoxfileTemplate(service string) string {
 	}
 	var b strings.Builder
 
-	b.WriteString("# Boxfile —— boxli 的构建描述文件，语法与 Dockerfile 类似但语义自研。\n")
-	b.WriteString("# 用法：在 boxli-compose.yml 同一目录下执行 `boxli build`（或 `boxli run` 触发构建）。\n")
+	b.WriteString("# Boxfile —— licore 的构建描述文件，语法与 Dockerfile 类似但语义自研。\n")
+	b.WriteString("# 用法：在 licore-compose.yml 同一目录下执行 `licore build`（或 `licore run` 触发构建）。\n")
 	fmt.Fprintf(&b, "# 本模板为服务 %q 生成；每个指令一行，'#' 开头为注释行。\n\n", service)
 
 	b.WriteString("# FROM 指定基础镜像，必须是第一条指令，且只能出现一次。\n")
@@ -70,7 +70,7 @@ func BoxfileTemplate(service string) string {
 	b.WriteString("# WORKDIR 设置后续 COPY/RUN 与容器 1 号进程的工作目录，必须是绝对路径。\n")
 	b.WriteString("WORKDIR /app\n\n")
 
-	b.WriteString("# .boxliignore —— 构建期忽略规则，直接写在 Boxfile 里（boxli 不读取 Docker 的 .dockerignore）。\n")
+	b.WriteString("# .licoreignore —— 构建期忽略规则，直接写在 Boxfile 里（licore 不读取 Docker 的 .dockerignore）。\n")
 	for _, d := range ignoreDirectives {
 		fmt.Fprintf(&b, "# %s/\n", d)
 	}
@@ -86,7 +86,7 @@ func BoxfileTemplate(service string) string {
 	return b.String()
 }
 
-// ComposeTemplate 返回一份可直接 `boxli up` 的 boxli-compose.yml 模板。
+// ComposeTemplate 返回一份可直接 `licore up` 的 licore-compose.yml 模板。
 //
 // 结构包含顶层 version/name，以及单个服务 app（boxfile 构建来源、restart 策略、
 // 端口、环境变量、卷）与 dev 块（watch/ignore/rebuild 热重载）。全文中文注释，
@@ -97,9 +97,9 @@ func ComposeTemplate(project string) string {
 	}
 	var b strings.Builder
 
-	b.WriteString("# boxli-compose.yml —— boxli 的本地编排文件（YAML）。\n")
-	b.WriteString("# 用法：与本文件同目录执行 `boxli up` 启动，`boxli lint` 做静态检查。\n")
-	b.WriteString("# 注意：boxli 自研生态，不兼容 docker-compose 的扩展字段，未知键会被拒绝。\n\n")
+	b.WriteString("# licore-compose.yml —— licore 的本地编排文件（YAML）。\n")
+	b.WriteString("# 用法：与本文件同目录执行 `licore up` 启动，`licore lint` 做静态检查。\n")
+	b.WriteString("# 注意：licore 自研生态，不兼容 docker-compose 的扩展字段，未知键会被拒绝。\n\n")
 
 	b.WriteString("# version 声明编排文件格式版本，当前只支持 1。\n")
 	b.WriteString("version: 1\n\n")
@@ -143,7 +143,7 @@ func ComposeTemplate(project string) string {
 	b.WriteString("      # watch 是要监听的目录（相对项目根目录）。\n")
 	b.WriteString("      watch:\n")
 	b.WriteString("        - ./boxfile-src\n")
-	b.WriteString("      # ignore 是监听排除列表；建议与 Boxfile 里的 .boxliignore 保持一致。\n")
+	b.WriteString("      # ignore 是监听排除列表；建议与 Boxfile 里的 .licoreignore 保持一致。\n")
 	b.WriteString("      ignore:\n")
 	for _, d := range ignoreDirectives {
 		fmt.Fprintf(&b, "        - ./%s\n", d)
@@ -154,7 +154,7 @@ func ComposeTemplate(project string) string {
 	return b.String()
 }
 
-// InitResult 汇总一次 `boxli init` 的落盘结果。
+// InitResult 汇总一次 `licore init` 的落盘结果。
 type InitResult struct {
 	// Dir 是脚手架实际写入的目录（绝对路径）。
 	Dir string
@@ -164,7 +164,7 @@ type InitResult struct {
 	Skipped []string
 }
 
-// Init 在 dir 下生成 Boxfile 与 boxli-compose.yml。dir 为空表示当前目录；
+// Init 在 dir 下生成 Boxfile 与 licore-compose.yml。dir 为空表示当前目录；
 // 目录不存在时自动创建。任一目标文件已存在且 force 为 false 时立即返回
 // 包装了 ErrFileExists 的错误，且不写入任何文件（要么全写、要么不动）。
 //

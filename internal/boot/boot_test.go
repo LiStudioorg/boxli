@@ -32,7 +32,7 @@ func (f *fakeLauncher) launch(cfg *store.ContainerConfig) (int, error) {
 
 func openStore(t *testing.T) *store.Store {
 	t.Helper()
-	st, err := store.Open(filepath.Join(t.TempDir(), "boxli-home"))
+	st, err := store.Open(filepath.Join(t.TempDir(), "licore-home"))
 	if err != nil {
 		t.Fatal(err)
 	}

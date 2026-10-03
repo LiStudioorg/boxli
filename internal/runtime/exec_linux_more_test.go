@@ -64,9 +64,9 @@ func runPTYHelper(t *testing.T, mode string, slave *os.File) string {
 	}
 	cmd := exec.Command(exe, "-test.run=TestPTYHelperProcess", "--", mode)
 	cmd.Env = append(os.Environ(),
-		"BOXLI_PTY_HELPER=1",
-		"BOXLI_PTY_MODE="+mode,
-		"BOXLI_PTY_SLAVE="+strconv.Itoa(int(slave.Fd())),
+		"LICORE_PTY_HELPER=1",
+		"LICORE_PTY_MODE="+mode,
+		"LICORE_PTY_SLAVE="+strconv.Itoa(int(slave.Fd())),
 	)
 	// 把从端作为 stdin 传下去，子进程里它就是 fd 0。
 	cmd.Stdin = slave
@@ -75,12 +75,12 @@ func runPTYHelper(t *testing.T, mode string, slave *os.File) string {
 }
 
 // TestPTYHelperProcess 是 runPTYHelper 的子进程入口：仅在设置了
-// BOXLI_PTY_HELPER 时才做事，否则立即返回（正常测试运行时为空操作）。
+// LICORE_PTY_HELPER 时才做事，否则立即返回（正常测试运行时为空操作）。
 func TestPTYHelperProcess(t *testing.T) {
-	if os.Getenv("BOXLI_PTY_HELPER") != "1" {
+	if os.Getenv("LICORE_PTY_HELPER") != "1" {
 		return
 	}
-	mode := os.Getenv("BOXLI_PTY_MODE")
+	mode := os.Getenv("LICORE_PTY_MODE")
 
 	// stdin（fd 0）是 openpty 的从端。
 	stdin := os.Stdin
@@ -114,20 +114,20 @@ func ioctlInt(fd uintptr, req, arg uintptr) syscall.Errno {
 	return errno
 }
 
-// TestExecIsolationEnvNotLeaked 覆盖 -e 环境变量传递不会把 BOXLI_* 内部变量
-// 泄漏进容器（envWithoutBoxli 的职责）。
+// TestExecIsolationEnvNotLeaked 覆盖 -e 环境变量传递不会把 LICORE_* 内部变量
+// 泄漏进容器（envWithoutLiCore 的职责）。
 func TestExecIsolationEnvNotLeaked(t *testing.T) {
 	// 构造含内部变量与用户变量的环境。
 	in := []string{
-		"BOXLI_NET_MODE=bridge",
-		"BOXLI_CGROUP_ID=abc",
-		"BOXLI_CONTAINER=x",
+		"LICORE_NET_MODE=bridge",
+		"LICORE_CGROUP_ID=abc",
+		"LICORE_CONTAINER=x",
 		"PATH=/usr/bin",
 		"FOO=bar",
 	}
-	got := envWithoutBoxliFrom(in)
+	got := envWithoutLiCoreFrom(in)
 	for _, kv := range got {
-		if len(kv) >= 6 && kv[:6] == "BOXLI_" {
+		if len(kv) >= 6 && kv[:6] == "LICORE_" {
 			t.Errorf("内部变量泄漏进容器环境: %q", kv)
 		}
 	}

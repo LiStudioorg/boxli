@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-// Client 是 hub 的 HTTP 客户端，作为 `boxli login/pull/push/search` 的底层。
+// Client 是 hub 的 HTTP 客户端，作为 `licore login/pull/push/search` 的底层。
 type Client struct {
 	BaseURL string
 	Token   string
@@ -51,7 +51,7 @@ func (c *Client) Login(username, password string) error {
 	return nil
 }
 
-// Push 把本地 .boxli 文件上传为 name:version 的镜像：
+// Push 把本地 .licore 文件上传为 name:version 的镜像：
 // 先上传其全部 blob（此处整文件作为一个 manifest blob：sha256 寻址），再打 tag。
 func (c *Client) Push(ref, filePath string) error {
 	name, version, err := splitRefPath(ref)

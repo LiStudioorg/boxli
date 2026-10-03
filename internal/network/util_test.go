@@ -30,8 +30,8 @@ func TestNetIP4Bytes(t *testing.T) {
 }
 
 func TestIfaceName(t *testing.T) {
-	if got := ifaceName("boxli0"); got != "boxli0" {
-		t.Errorf("ifaceName(boxli0)=%s", got)
+	if got := ifaceName("licore0"); got != "licore0" {
+		t.Errorf("ifaceName(licore0)=%s", got)
 	}
 	// 超长与非法字符收敛。
 	long := ifaceName(strings.Repeat("a", 30))
@@ -53,10 +53,10 @@ func TestVethNames(t *testing.T) {
 			t.Fatalf("veth 名异常: %s", n)
 		}
 	}
-	if got := epVethName("boxli0", "123456789012"); got != "veth"+shortID("123456789012", 7) {
+	if got := epVethName("licore0", "123456789012"); got != "veth"+shortID("123456789012", 7) {
 		t.Fatalf("epVethName 不一致: %s", got)
 	}
-	if got := epPeerName("boxli0", "123456789012"); got != "vpe"+shortID("123456789012", 7) {
+	if got := epPeerName("licore0", "123456789012"); got != "vpe"+shortID("123456789012", 7) {
 		t.Fatalf("epPeerName 不一致: %s", got)
 	}
 }

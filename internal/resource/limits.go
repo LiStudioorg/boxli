@@ -19,9 +19,9 @@ import (
 // CgroupV2Mount 是 cgroups v2 统一层级的挂载点。
 const CgroupV2Mount = "/sys/fs/cgroup"
 
-// BoxliGroup 是 Boxli 在 cgroup 根下自建的一级组名：所有容器共享一个父组，
-// 便于 `boxli rm` 后整体回收，也避免污染宿主其它 cgroup。
-const BoxliGroup = "boxli"
+// LiCoreGroup 是 LiCore 在 cgroup 根下自建的一级组名：所有容器共享一个父组，
+// 便于 `licore rm` 后整体回收，也避免污染宿主其它 cgroup。
+const LiCoreGroup = "licore"
 
 // 内存与 IO 的默认约束（与 Linux 惯用值保持一致）。
 const (
@@ -42,11 +42,11 @@ const (
 var (
 	// ErrUnsupported 表示当前环境不具备该能力的承载条件（例如没有 cgroups v2、
 	// 宿主未挂载 XFS project quota）。调用方应降级并提示，而不是让容器启动失败。
-	ErrUnsupported = errors.New("boxli/resource: 当前环境不支持该资源能力")
+	ErrUnsupported = errors.New("licore/resource: 当前环境不支持该资源能力")
 	// ErrBadParam 表示用户给的资源参数本身非法（单位错误、越界、互相矛盾）。
-	ErrBadParam = errors.New("boxli/resource: 资源参数非法")
+	ErrBadParam = errors.New("licore/resource: 资源参数非法")
 	// ErrBadDevice 表示设备标识非法（PCI 地址、/dev 路径或 major:minor）。
-	ErrBadDevice = errors.New("boxli/resource: 设备标识非法")
+	ErrBadDevice = errors.New("licore/resource: 设备标识非法")
 )
 
 // Limits 是一次容器运行的全部资源限制请求。零值表示"全部不限制"，
@@ -270,7 +270,7 @@ func SharesToWeight(shares int64) int64 {
 }
 
 // WeightToShares 是 SharesToWeight 的逆运算，用于把宿主既有 cpu.weight
-// 反向呈现成用户熟悉的 shares（`boxli stats` / 诊断输出用）。
+// 反向呈现成用户熟悉的 shares（`licore stats` / 诊断输出用）。
 func WeightToShares(weight int64) int64 {
 	if weight <= 0 {
 		return 0

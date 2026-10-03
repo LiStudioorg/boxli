@@ -24,24 +24,24 @@ func Available() bool {
 	return err == nil && len(data) > 0
 }
 
-// controllers 需要开给 boxli 子组的控制器，写进 <boxli>/cgroup.subtree_control。
-// 注意：只有此处 enable 后，boxli/<id>/cpu.max|memory.max|pids.max 等才可写；
+// controllers 需要开给 licore 子组的控制器，写进 <licore>/cgroup.subtree_control。
+// 注意：只有此处 enable 后，licore/<id>/cpu.max|memory.max|pids.max 等才可写；
 // 若不 enable，cgroup v2 子组写这些限制会 EPERM（此前 --memory/--cpus 静默落空）。
 const controllers = "cpu memory pids"
 
-// enableControllers 在 boxli 父组的 cgroup.subtree_control 里启用容器限制所需
+// enableControllers 在 licore 父组的 cgroup.subtree_control 里启用容器限制所需
 // 的控制器（cpu/memory/pids）。已在更外层启用时追加挂到本组；幂等、容错。
 //
-// 必须先建出 boxli 父组：cgroup.subtree_control 只存在于已创建的子组里，
-// 若父组不存在（例如首次运行，或上一次 `boxli rm` / 验证脚本的清理把
-// /sys/fs/cgroup/boxli 删掉之后），写该文件会 ENOENT 并让整个资源限制
+// 必须先建出 licore 父组：cgroup.subtree_control 只存在于已创建的子组里，
+// 若父组不存在（例如首次运行，或上一次 `licore rm` / 验证脚本的清理把
+// /sys/fs/cgroup/licore 删掉之后），写该文件会 ENOENT 并让整个资源限制
 // 静默失效。此前依赖 Setup 里 MkdirAll(c.Path) 的副作用顺带建父组，但那是
 // 在 enableControllers **之后**才执行的，属于顺序依赖的隐患。
 func enableControllers() error {
 	if !Available() {
 		return fmt.Errorf("cgroups v2 不可用: %w", ErrUnsupported)
 	}
-	group := filepath.Join(cgroupV2GroupRoot, BoxliGroup)
+	group := filepath.Join(cgroupV2GroupRoot, LiCoreGroup)
 	if err := os.MkdirAll(group, 0o755); err != nil {
 		return fmt.Errorf("创建 cgroup 父组 %s: %w", group, err)
 	}
@@ -305,7 +305,7 @@ func Remove(containerID string) error {
 	return nil
 }
 
-// Update 动态调整已存在 cgroup 的限制（boxli update）。
+// Update 动态调整已存在 cgroup 的限制（licore update）。
 func Update(containerID string, l *Limits) error {
 	if CgroupModeOf() == ModeV1 {
 		root := v1Root()
@@ -346,7 +346,7 @@ func (c *Cgroup) readInt(name string) (int64, error) {
 	return strconv.ParseInt(s, 10, 64)
 }
 
-// Collect 采集容器运行时的 cgroup 用量（供 boxli stats）。
+// Collect 采集容器运行时的 cgroup 用量（供 licore stats）。
 func Collect(c *Cgroup) (*Stats, error) {
 	st := &Stats{ContainerID: c.ContainerID, Running: true}
 	if cpu, err := c.readInt("cpu.usage_usec"); err == nil {

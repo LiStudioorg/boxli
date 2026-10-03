@@ -13,7 +13,7 @@ import (
 	"github.com/LiStudioorg/licore/internal/store"
 )
 
-// newShimCommand 注册隐藏命令 `boxli dev-shim`：为已创建的容器 fork 一个
+// newShimCommand 注册隐藏命令 `licore dev-shim`：为已创建的容器 fork 一个
 // 脱离终端的 shim（开发/测试入口；正式路径是 run -d 与 boot 内部调用）。
 func newShimCommand(out io.Writer) *cobra.Command {
 	var root string
@@ -39,6 +39,6 @@ func newShimCommand(out io.Writer) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&root, "data-dir", "", "数据目录（默认 $BOXLI_HOME 或 ~/.boxli）")
+	cmd.Flags().StringVar(&root, "data-dir", "", "数据目录（默认 $LICORE_HOME 或 ~/.licore）")
 	return cmd
 }

@@ -1,7 +1,7 @@
 // Copyright (C) 2026 LiStudioorg
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Package compose 解析 Boxli 的自研 compose 文件（零第三方依赖的 YAML 子集）
+// Package compose 解析 LiCore 的自研 compose 文件（零第三方依赖的 YAML 子集）
 // 并提供项目模型、严格校验与依赖拓扑排序。
 //
 // 设计原则与 internal/image 一致：严格解析、未知键一律拒绝、禁止"尽力猜测"；
@@ -9,7 +9,7 @@
 //
 // 典型用法：
 //
-//	p, err := compose.LoadFile("boxli-compose.yaml")
+//	p, err := compose.LoadFile("licore-compose.yaml")
 //	if err != nil {
 //		return err
 //	}
@@ -110,9 +110,9 @@ type Project struct {
 type Service struct {
 	// Name 是服务名（Services 映射的键），解析后回填，便于 Resolve 结果自描述。
 	Name string `yaml:"-"`
-	// Image 是引用的 .boxli 镜像，形如 name:version；与 boxfile/build 三选一。
+	// Image 是引用的 .licore 镜像，形如 name:version；与 boxfile/build 三选一。
 	Image string `yaml:"image"`
-	// Boxfile 是 .boxli 镜像文件路径（相对 compose 文件所在目录）；三选一。
+	// Boxfile 是 .licore 镜像文件路径（相对 compose 文件所在目录）；三选一。
 	Boxfile string `yaml:"boxfile"`
 	// Build 是构建上下文路径（相对 compose 文件所在目录）；三选一。
 	Build string `yaml:"build"`
@@ -160,7 +160,7 @@ type ResolvedService struct {
 	Name string
 	// Image 是镜像引用 name:version；仅当服务声明了 image 时非空。
 	Image string
-	// Boxfile 是 .boxli 文件路径：声明了就是绝对路径（或相对 Dir 的干净路径），
+	// Boxfile 是 .licore 文件路径：声明了就是绝对路径（或相对 Dir 的干净路径），
 	// 未声明时为空。
 	Boxfile string
 	// Build 是构建上下文路径：声明了就是绝对路径（或相对 Dir 的干净路径），未声明时为空。
@@ -218,7 +218,7 @@ func LoadFile(path string) (*Project, error) {
 		}
 	}
 	if p.Name == "" {
-		p.Name = "boxli-compose"
+		p.Name = "licore-compose"
 	}
 	return p, nil
 }
@@ -453,7 +453,7 @@ func (p *Project) validateService(name string, svc *Service) []string {
 		}
 	}
 	if svc.Boxfile != "" && isDirLike(svc.Boxfile) {
-		bad("boxfile=%q 需指向 .boxli 文件", svc.Boxfile)
+		bad("boxfile=%q 需指向 .licore 文件", svc.Boxfile)
 	}
 	if !allowedRestart[svc.Restart] {
 		bad("restart=%q 非法（可选 no|always|unless-stopped|on-failure）", svc.Restart)

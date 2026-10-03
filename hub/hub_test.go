@@ -29,7 +29,7 @@ func newTestRegistry(t *testing.T) *Registry {
 
 func TestPutBlobDedup(t *testing.T) {
 	r := newTestRegistry(t)
-	data := []byte("hello boxli blob")
+	data := []byte("hello licore blob")
 	// 先算摘要。
 	d, _, _ := computeDigest(bytes.NewReader(data))
 	b1, err := r.PutBlob("", bytes.NewReader(data), int64(len(data)))
@@ -153,8 +153,8 @@ func TestServerRoundtrip(t *testing.T) {
 		t.Fatal("登录未返回令牌")
 	}
 
-	img := t.TempDir() + "/app.boxli"
-	if err := os.WriteFile(img, []byte("boxli-image-data-v1"), 0o644); err != nil {
+	img := t.TempDir() + "/app.licore"
+	if err := os.WriteFile(img, []byte("licore-image-data-v1"), 0o644); err != nil {
 		t.Fatalf("写镜像: %v", err)
 	}
 	if err := c.Push("alice/app:v1", img); err != nil {
@@ -169,12 +169,12 @@ func TestServerRoundtrip(t *testing.T) {
 		t.Fatalf("搜索 app 结果不符: %+v", results)
 	}
 
-	dst := t.TempDir() + "/out.boxli"
+	dst := t.TempDir() + "/out.licore"
 	if err := c.Pull("alice/app:v1", dst); err != nil {
 		t.Fatalf("Pull: %v", err)
 	}
 	got, _ := os.ReadFile(dst)
-	if string(got) != "boxli-image-data-v1" {
+	if string(got) != "licore-image-data-v1" {
 		t.Fatalf("Pulled 内容不符: %s", got)
 	}
 }

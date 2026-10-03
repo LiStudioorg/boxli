@@ -5,7 +5,7 @@ package resource
 
 import "path/filepath"
 
-// cgroupV2GroupRoot 是 cgroup v2 统一层级的根（boxli 父组的所在根），同时
+// cgroupV2GroupRoot 是 cgroup v2 统一层级的根（licore 父组的所在根），同时
 // 用作 v2 可用性判定（读 <root>/cgroup.controllers）的基准路径。
 //
 // 生产环境恒等于 CgroupV2Mount，与 cgroupV1Roots 一样只作为测试缝存在：
@@ -14,7 +14,7 @@ import "path/filepath"
 var cgroupV2GroupRoot = CgroupV2Mount
 
 // Cgroup 表示一个容器专属的 cgroups v2 组及其路径。
-// Linux 下路径为 <CgroupV2Mount>/<BoxliGroup>/<containerID>。
+// Linux 下路径为 <CgroupV2Mount>/<LiCoreGroup>/<containerID>。
 type Cgroup struct {
 	// Root 是 cgroups v2 根挂载点。
 	Root string
@@ -31,7 +31,7 @@ type Cgroup struct {
 func NewCgroup(containerID string) *Cgroup {
 	root := cgroupV2GroupRoot
 	return &Cgroup{Root: root, ContainerID: containerID,
-		Path: filepath.Join(root, BoxliGroup, containerID)}
+		Path: filepath.Join(root, LiCoreGroup, containerID)}
 }
 
 // Stats 是一次 stats 采集结果。

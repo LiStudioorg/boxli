@@ -13,24 +13,24 @@ import (
 
 // 子进程通过环境变量传递初始化参数（exec 后仍然存活）。
 const (
-	envInitMarker       = "BOXLI_CHILD"    // 存在即表示本进程是容器 init
-	envRootfs           = "BOXLI_ROOTFS"   // 新根目录（宿主机路径）
-	envHostname         = "BOXLI_HOSTNAME" // 容器 UTS hostname
-	envChildCmdPrefix   = "BOXLI_ARG"      // BOXLI_ARG0..N 用户命令 argv
-	envChildCmdCountKey = "BOXLI_ARGC"     // argv 参数个数
-	envCID              = "BOXLI_CID"      // 本次容器实例唯一 ID（旧根目录名后缀）
+	envInitMarker       = "LICORE_CHILD"    // 存在即表示本进程是容器 init
+	envRootfs           = "LICORE_ROOTFS"   // 新根目录（宿主机路径）
+	envHostname         = "LICORE_HOSTNAME" // 容器 UTS hostname
+	envChildCmdPrefix   = "LICORE_ARG"      // LICORE_ARG0..N 用户命令 argv
+	envChildCmdCountKey = "LICORE_ARGC"     // argv 参数个数
+	envCID              = "LICORE_CID"      // 本次容器实例唯一 ID（旧根目录名后缀）
 )
 
 // 哨兵错误。
 var (
 	// ErrNotInit 表示当前进程不是被 fork 出来的容器 init。
-	ErrNotInit = errors.New("boxli/runtime: 当前进程不是容器 init")
+	ErrNotInit = errors.New("licore/runtime: 当前进程不是容器 init")
 	// ErrBadConfig 表示启动配置非法。
-	ErrBadConfig = errors.New("boxli/runtime: 配置非法")
+	ErrBadConfig = errors.New("licore/runtime: 配置非法")
 	// ErrNotRoot 表示当前进程既非 root 又未显式允许 rootless（启动/exec 需特权）。
-	ErrNotRoot = errors.New("boxli/runtime: 需要 root")
+	ErrNotRoot = errors.New("licore/runtime: 需要 root")
 	// ErrUnsupported 表示本平台尚无运行时后端（非 Linux 文件实现）。
-	ErrUnsupported = errors.New("boxli/runtime: 本平台运行时未实现（阶段 2 仅支持 linux）")
+	ErrUnsupported = errors.New("licore/runtime: 本平台运行时未实现（阶段 2 仅支持 linux）")
 )
 
 // Config 描述一次容器启动。
@@ -55,7 +55,7 @@ type StartResult struct {
 	ExitCode int
 }
 
-// ExecOptions 描述一次 `boxli exec`：在运行中容器（由 TargetPID 所指 init
+// ExecOptions 描述一次 `licore exec`：在运行中容器（由 TargetPID 所指 init
 // 的命名空间）里执行命令。跨平台类型；Linux 后端实现。
 type ExecOptions struct {
 	// TargetPID 是容器 init 进程在宿主上的 PID（runtime.json 的 initPid）。

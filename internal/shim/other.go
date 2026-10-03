@@ -20,7 +20,7 @@ func RunFromEnv(_ context.Context) error { return errUnsupported }
 // Reexec 非 Linux 平台不支持。
 func Reexec(_, _ string) (*os.Process, error) { return nil, errUnsupported }
 
-var errUnsupported = &shimError{"boxli/shim: 本平台 shim 未实现（阶段 2 仅支持 linux）"}
+var errUnsupported = &shimError{"licore/shim: 本平台 shim 未实现（阶段 2 仅支持 linux）"}
 
 type shimError struct{ msg string }
 

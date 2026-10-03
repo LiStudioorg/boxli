@@ -76,7 +76,7 @@ type Registry struct {
 }
 
 // NewRegistry 返回基于本地目录的内容寻址仓库。root 为空时沿用
-// $BOXLI_HOME → ~/.boxli（复用数据根下的 hub 子树）。
+// $LICORE_HOME → ~/.licore（复用数据根下的 hub 子树）。
 func NewRegistry(root string, blobs BlobStore) (*Registry, error) {
 	if blobs == nil {
 		r, err := localBlobRoot(root)

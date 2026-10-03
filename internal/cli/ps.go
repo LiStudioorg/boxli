@@ -15,7 +15,7 @@ import (
 	"github.com/LiStudioorg/licore/internal/store"
 )
 
-// newPsCommand 实现 `boxli ps`：默认只列运行中容器，-a 含已停止。
+// newPsCommand 实现 `licore ps`：默认只列运行中容器，-a 含已停止。
 func newPsCommand(out io.Writer) *cobra.Command {
 	var (
 		all     bool
@@ -43,9 +43,9 @@ func newPsCommand(out io.Writer) *cobra.Command {
 			}
 			if len(rows) == 0 {
 				if all {
-					fmt.Fprintln(out, "暂无容器（运行 boxli run <镜像> 创建）")
+					fmt.Fprintln(out, "暂无容器（运行 licore run <镜像> 创建）")
 				} else {
-					fmt.Fprintln(out, "暂无运行中的容器（boxli ps -a 查看全部）")
+					fmt.Fprintln(out, "暂无运行中的容器（licore ps -a 查看全部）")
 				}
 				return nil
 			}
@@ -60,11 +60,11 @@ func newPsCommand(out io.Writer) *cobra.Command {
 	}
 	cmd.Flags().BoolVarP(&all, "all", "a", false, "包含已停止的容器")
 	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "只输出容器 ID")
-	cmd.Flags().StringVar(&dataDir, "data-dir", "", "数据目录（默认 $BOXLI_HOME 或 ~/.boxli）")
+	cmd.Flags().StringVar(&dataDir, "data-dir", "", "数据目录（默认 $LICORE_HOME 或 ~/.licore）")
 	return cmd
 }
 
-// containerRow 是 `boxli ps` 的一行。
+// containerRow 是 `licore ps` 的一行。
 type containerRow struct {
 	ID      string
 	Name    string

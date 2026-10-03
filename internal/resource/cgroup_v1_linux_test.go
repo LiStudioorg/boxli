@@ -148,7 +148,7 @@ func TestV1PrimaryControllerPreference(t *testing.T) {
 func TestNewV1CgroupPath(t *testing.T) {
 	root := fakeV1Root(t, "memory", "cpu")
 	c := newV1Cgroup("abc123", root)
-	want := filepath.Join(root, "memory", BoxliGroup, "abc123")
+	want := filepath.Join(root, "memory", LiCoreGroup, "abc123")
 	if c.Path != want {
 		t.Fatalf("Path = %q, want %q", c.Path, want)
 	}
@@ -498,13 +498,13 @@ func withV2GroupRoot(t *testing.T, root string) {
 	t.Cleanup(func() { cgroupV2GroupRoot = old })
 }
 
-// TestEnableControllersCreatesParentGroup 是回归测试：boxli 父组不存在时
+// TestEnableControllersCreatesParentGroup 是回归测试：licore 父组不存在时
 // enableControllers 必须先把它建出来，否则写 cgroup.subtree_control 会 ENOENT，
 // 导致所有资源限制静默失效。
 //
-// 该缺陷真实发生过：验证脚本的清理会删掉 /sys/fs/cgroup/boxli，此后再 run
+// 该缺陷真实发生过：验证脚本的清理会删掉 /sys/fs/cgroup/licore，此后再 run
 // 带 --memory/--cpus 的容器就写不进限制（memory.max/cpu.max 全部 missing），
-// 而此前一直"看起来正常"只是因为 boxli 目录在多次运行之间幸存。
+// 而此前一直"看起来正常"只是因为 licore 目录在多次运行之间幸存。
 func TestEnableControllersCreatesParentGroup(t *testing.T) {
 	root := t.TempDir()
 	withV2GroupRoot(t, root)
@@ -513,7 +513,7 @@ func TestEnableControllersCreatesParentGroup(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "cgroup.controllers"), []byte("cpu memory pids\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	group := filepath.Join(root, BoxliGroup)
+	group := filepath.Join(root, LiCoreGroup)
 	if _, err := os.Stat(group); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("前置条件：%s 不应存在", group)
 	}
@@ -546,7 +546,7 @@ func TestEnableControllersIdempotent(t *testing.T) {
 			t.Fatalf("第 %d 次 enableControllers: %v", i+1, err)
 		}
 	}
-	got := readTestFile(t, filepath.Join(root, BoxliGroup, "cgroup.subtree_control"))
+	got := readTestFile(t, filepath.Join(root, LiCoreGroup, "cgroup.subtree_control"))
 	// 已启用后不应再写（内容保持首次写入的结果）。
 	if strings.Count(got, "+cpu") != 1 {
 		t.Errorf("+cpu 应恰好出现一次: %q", got)

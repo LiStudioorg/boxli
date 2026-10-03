@@ -108,7 +108,7 @@ func TestSplitRefAndHumanBytes(t *testing.T) {
 func TestImagesCommandEmptyStore(t *testing.T) {
 	// 端到端：空数据目录退出码 0 且给出友好提示。
 	root := t.TempDir()
-	t.Setenv("BOXLI_HOME", root)
+	t.Setenv("LICORE_HOME", root)
 	cmd := newImagesCommand(&bytes.Buffer{})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("空 store 应成功: %v", err)

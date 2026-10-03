@@ -93,7 +93,7 @@ func TestCommitRootfsImageOps(t *testing.T) {
 	cfg := &store.ContainerConfig{ID: "abc123def456", Name: "tiny", Rootfs: root}
 
 	res, err := CommitRootfs(st, cfg, "alice/tiny:v1", &CommitOptions{
-		Labels:  map[string]string{"org.boxli.maintainer": "alice"},
+		Labels:  map[string]string{"org.licore.maintainer": "alice"},
 		Message: "initial commit",
 	})
 	if err != nil {
@@ -122,10 +122,10 @@ func TestCommitRootfsImageOps(t *testing.T) {
 	if fi.Size() != res.Bytes {
 		t.Fatalf("产物大小 %d != 报告 %d", fi.Size(), res.Bytes)
 	}
-	if want := filepath.Join(dir, "source.boxli"); res.Path != want {
+	if want := filepath.Join(dir, "source.licore"); res.Path != want {
 		t.Fatalf("产物路径 = %q, 期望 %q", res.Path, want)
 	}
-	for _, name := range []string{"source.boxli", "index.json", "state.json"} {
+	for _, name := range []string{"source.licore", "index.json", "state.json"} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
 			t.Fatalf("缺少 %s: %v", name, err)
 		}
@@ -152,10 +152,10 @@ func TestCommitRootfsImageOps(t *testing.T) {
 	if layer.Digest != res.LayerDigest {
 		t.Fatalf("清单层摘要 %q != 报告 %q", layer.Digest, res.LayerDigest)
 	}
-	if got := loaded.Config.Labels["org.boxli.maintainer"]; got != "alice" {
+	if got := loaded.Config.Labels["org.licore.maintainer"]; got != "alice" {
 		t.Fatalf("config.labels 未保留: %q", got)
 	}
-	if got := loaded.Manifest.Annotations["org.boxli.commit.message"]; got != "initial commit" {
+	if got := loaded.Manifest.Annotations["org.licore.commit.message"]; got != "initial commit" {
 		t.Fatalf("commit 注释未写入: %q", got)
 	}
 
@@ -292,11 +292,11 @@ func TestImageOpsRoundTrip(t *testing.T) {
 		t.Fatalf("--force tag 失败: %v", err)
 	}
 
-	// save：必须带 .boxli 后缀。
+	// save：必须带 .licore 后缀。
 	if err := SaveImage(src, "alice/tiny:stable", filepath.Join(work, "out.tar"), false); err == nil {
-		t.Fatal("save 未校验 .boxli 后缀")
+		t.Fatal("save 未校验 .licore 后缀")
 	}
-	exported := filepath.Join(work, "exported.boxli")
+	exported := filepath.Join(work, "exported.licore")
 	if err := SaveImage(src, "alice/tiny:stable", exported, false); err != nil {
 		t.Fatalf("SaveImage 失败: %v", err)
 	}

@@ -10,7 +10,7 @@ import "errors"
 // 向上返回错误。这里的哨兵只描述"调用方用法错误"这一类问题。
 var (
 	// ErrNilReport 表示把 nil Report 交给了渲染函数。
-	ErrNilReport = errors.New("boxli/doctor: Report 为空")
+	ErrNilReport = errors.New("licore/doctor: Report 为空")
 	// ErrNilWriter 表示渲染目标 io.Writer 为空。
-	ErrNilWriter = errors.New("boxli/doctor: 输出目标为空")
+	ErrNilWriter = errors.New("licore/doctor: 输出目标为空")
 )

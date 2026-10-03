@@ -28,7 +28,7 @@ const (
 // 稳定的规则 ID。调用方（CLI、编辑器、CI）依赖这些字符串做过滤与抑制，
 // 因此只允许新增，不允许改写既有取值。
 const (
-	// 编排文件（boxli-compose.yml）规则。
+	// 编排文件（licore-compose.yml）规则。
 	RuleComposeParse          = "compose/parse"
 	RuleComposeValidate       = "compose/validate"
 	RuleComposeUnknownKey     = "compose/unknown-key"
@@ -50,7 +50,7 @@ const (
 	RuleBoxfileArgUnused       = "boxfile/arg-unused"
 )
 
-// 解析器（boxli-compose.yml / Boxfile）的静态已知键表。lint 不复用内部解析器：
+// 解析器（licore-compose.yml / Boxfile）的静态已知键表。lint 不复用内部解析器：
 // 解析器在首个错误处即返回，而"一次报全所有问题"要求自主扫描。两张表必须与
 // internal/compose、internal/build 的解析器同步维护，新增键时两边一起改。
 var (
@@ -171,7 +171,7 @@ func (r *Result) sortDiagnostics() {
 	})
 }
 
-// LintComposeFile 检查单个 boxli-compose.yml 文件。路径不存在或不可读时返回错误
+// LintComposeFile 检查单个 licore-compose.yml 文件。路径不存在或不可读时返回错误
 // （显式指定的路径必须存在）；文件内容有问题时只产出 Diagnostics，不返回错误。
 func LintComposeFile(path string) (*Result, error) {
 	data, err := os.ReadFile(path)
@@ -197,7 +197,7 @@ func LintBoxfile(path string) (*Result, error) {
 	return res, nil
 }
 
-// LintProject 检查 dir 下的 boxli-compose.yml（其次 boxli-compose.yaml）与 Boxfile。
+// LintProject 检查 dir 下的 licore-compose.yml（其次 licore-compose.yaml）与 Boxfile。
 //
 // 两个文件都不存在时返回包装了 ErrNoProject 的错误；只缺其中一个不算错误，
 // 缺失的文件被静默跳过（缺 Boxfile 时跳过 compose 的 compose/missing-target，

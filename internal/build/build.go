@@ -1,16 +1,16 @@
 // Copyright (C) 2026 LiStudioorg
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Package build 实现 `boxli build` 的两半：
+// Package build 实现 `licore build` 的两半：
 //
 //   - Boxfile 解析：把面向用户的构建描述（FROM / COPY / ENV / WORKDIR /
 //     ENTRYPOINT / CMD / EXPOSE / VOLUME / LABEL / USER / ARG）严格解析成
 //     结构化的 *Boxfile（见 boxfile.go）；
-//   - .boxli 镜像构造：把解析结果施加到临时 rootfs 上，产出规范
-//     docs/image-spec.md 定义的 .boxli 文件——外层未压缩 tar，内含
+//   - .licore 镜像构造：把解析结果施加到临时 rootfs 上，产出规范
+//     docs/image-spec.md 定义的 .licore 文件——外层未压缩 tar，内含
 //     index.json、基础镜像原样搬过来的层，以及一个追加的新层。
 //
-// 本包只做"Boxfile → .boxli 文件"的纯函数式转换：不读写 ~/.boxli 数据目录，
+// 本包只做"Boxfile → .licore 文件"的纯函数式转换：不读写 ~/.licore 数据目录，
 // 不启动容器，落地存储由调用方（internal/cli / internal/store）负责。
 // 产物在返回前会用 image.OpenFile 自检，任何摘要或大小不符都在构建期暴露。
 package build
@@ -57,9 +57,9 @@ type Options struct {
 	ContextDir string
 	// Boxfile 是已解析的构建描述，必填。
 	Boxfile *Boxfile
-	// BaseImage 是基础镜像 .boxli 文件的本地路径，留空表示 scratch 构建。
+	// BaseImage 是基础镜像 .licore 文件的本地路径，留空表示 scratch 构建。
 	BaseImage string
-	// OutPath 是产出的 .boxli 路径；父目录必须已存在（本函数不做 MkdirAll，
+	// OutPath 是产出的 .licore 路径；父目录必须已存在（本函数不做 MkdirAll，
 	// 免得把拼错的路径变成一个空目录）。
 	OutPath string
 	// TempDir 是临时 rootfs 的父目录（存放 MkdirTemp 出来的构建工作区）。
@@ -71,7 +71,7 @@ type Options struct {
 	// Architecture / OS 覆盖产物的平台字段，留空取 runtime.GOARCH / runtime.GOOS。
 	Architecture string
 	OS           string
-	// Name / Version 覆盖写入 index.json 的镜像引用（对应 `boxli build -t name:version`）。
+	// Name / Version 覆盖写入 index.json 的镜像引用（对应 `licore build -t name:version`）。
 	// 为空时退化为基础镜像引用或 OutPath 文件名派生（见 imageRefOf）。
 	Name    string
 	Version string
@@ -82,7 +82,7 @@ type Options struct {
 
 // Result 是一次构建的产出摘要。
 type Result struct {
-	// Path 是产出的 .boxli 文件路径。
+	// Path 是产出的 .licore 文件路径。
 	Path string
 	// Bytes 是产出文件的字节数。
 	Bytes int64
@@ -98,7 +98,7 @@ type Result struct {
 	Skipped int
 }
 
-// Build 把一份解析好的 Boxfile 构建成新的 .boxli 文件。
+// Build 把一份解析好的 Boxfile 构建成新的 .licore 文件。
 //
 // 流程：必要时用 image.OpenFile 打开基础镜像 → 把基础镜像的层按
 // applyOrder 解进临时 rootfs → 逐条施加指令（COPY 落文件、ENV / WORKDIR /
@@ -147,7 +147,7 @@ func Build(ctx context.Context, opts *Options) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	tmpDir, err := os.MkdirTemp(workRoot, ".boxli-build-*")
+	tmpDir, err := os.MkdirTemp(workRoot, ".licore-build-*")
 	if err != nil {
 		return nil, fmt.Errorf("创建构建临时目录: %w", err)
 	}
@@ -360,7 +360,7 @@ func buildWorkRoot(opts *Options) (string, error) {
 }
 
 // imageRefOf 决定产物的 name:version：沿用基础镜像的引用，scratch 构建取
-// 输出文件名去掉 .boxli 后缀，再依次回退为 "scratch" / "latest"。
+// 输出文件名去掉 .licore 后缀，再依次回退为 "scratch" / "latest"。
 func imageRefOf(opts *Options, base *baseImage) (string, string, error) {
 	name, version := opts.Name, opts.Version
 	if name == "" {
@@ -370,7 +370,7 @@ func imageRefOf(opts *Options, base *baseImage) (string, string, error) {
 				version = base.loaded.Manifest.Version
 			}
 		} else {
-			stem := strings.TrimSuffix(filepath.Base(opts.OutPath), ".boxli")
+			stem := strings.TrimSuffix(filepath.Base(opts.OutPath), ".licore")
 			if stem == "" || stem == "." || stem == string(filepath.Separator) {
 				stem = "scratch"
 			}
@@ -425,7 +425,7 @@ func osOf(opts *Options) string {
 
 // buildAnnotations 记录构建工具与 ARG 取值，键前缀符合规范 3.1 的注解约束。
 func buildAnnotations(opts *Options) map[string]string {
-	ann := map[string]string{"org.boxli.build.tool": "boxli/build"}
+	ann := map[string]string{"org.licore.build.tool": "licore/build"}
 	if len(opts.Args) > 0 {
 		keys := make([]string, 0, len(opts.Args))
 		for k := range opts.Args {
@@ -436,7 +436,7 @@ func buildAnnotations(opts *Options) map[string]string {
 		for _, k := range keys {
 			parts = append(parts, k+"="+opts.Args[k])
 		}
-		ann["org.boxli.build.args"] = strings.Join(parts, ",")
+		ann["org.licore.build.args"] = strings.Join(parts, ",")
 	}
 	return ann
 }

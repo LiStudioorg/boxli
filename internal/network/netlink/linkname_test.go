@@ -11,7 +11,7 @@ import "testing"
 func TestTrimAttrString(t *testing.T) {
 	cases := map[string]string{
 		"lo\x00":      "lo",
-		"boxli0\x00":  "boxli0",
+		"licore0\x00": "licore0",
 		"abc\x00\x00": "abc",
 		"plain":       "plain",
 		"":            "",

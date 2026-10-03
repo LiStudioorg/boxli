@@ -1,7 +1,7 @@
 // Copyright (C) 2026 LiStudioorg
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Package engine 串联一次 `boxli run` 的完整生命周期：镜像查找 → 层解包 →
+// Package engine 串联一次 `licore run` 的完整生命周期：镜像查找 → 层解包 →
 // rootfs 合并 → 容器状态落盘 → 启动（前台持有 / 后台 fork shim）。
 // CLI 层只做参数绑定，编排在 engine，可脱离 cobra 测试。
 // 资源限制（--memory/--cpus/--pids-limit）与端口/卷为阶段 3 项：解析并
@@ -30,7 +30,7 @@ import (
 )
 
 // ErrImageNotFound 表示引用的镜像尚未导入本地数据目录。
-var ErrImageNotFound = errors.New("boxli/engine: 镜像未找到")
+var ErrImageNotFound = errors.New("licore/engine: 镜像未找到")
 
 // RunSpec 是一次 run 的完整请求。
 type RunSpec struct {
@@ -56,7 +56,7 @@ type RunSpec struct {
 	// Ports / Volumes 是 -p / -v 原始参数，运行时分别接入网络 NAT 与卷挂载。
 	Ports   []string
 	Volumes []string
-	// Network 是接入的网络名（boxli0/自定义/host/none）；IP 为期望地址（可空）。
+	// Network 是接入的网络名（licore0/自定义/host/none）；IP 为期望地址（可空）。
 	Network string
 	IP      string
 	// MemoryMB / CPUs / PidsLimit 是资源参数的便捷字段（等价字段已并入 Limits）。
@@ -92,9 +92,9 @@ func Run(ctx context.Context, st *store.Store, spec *RunSpec) (*RunResult, error
 		return nil, err
 	}
 	if !ok {
-		return nil, fmt.Errorf("镜像 %s:%s 未导入，请先 boxli pull %s_%s.boxli: %w", name, version, name, version, ErrImageNotFound)
+		return nil, fmt.Errorf("镜像 %s:%s 未导入，请先 licore pull %s_%s.licore: %w", name, version, name, version, ErrImageNotFound)
 	}
-	loaded, err := image.OpenFile(filepath.Join(st.ImageDir(name, version), "source.boxli"))
+	loaded, err := image.OpenFile(filepath.Join(st.ImageDir(name, version), "source.licore"))
 	if err != nil {
 		return nil, fmt.Errorf("重新打开镜像文件失败: %w", err)
 	}
@@ -240,7 +240,7 @@ func BuildRootfs(st *store.Store, imageRef, targetDir string) error {
 	if err != nil {
 		return err
 	}
-	src := filepath.Join(st.ImageDir(name, version), "source.boxli")
+	src := filepath.Join(st.ImageDir(name, version), "source.licore")
 	loaded, err := image.OpenFile(src)
 	if err != nil {
 		return err
@@ -354,7 +354,7 @@ func mergeEnv(base, override []string) []string {
 func splitImageRef(ref string) (name, version string, err error) {
 	i := strings.LastIndex(ref, ":")
 	if i <= 0 || i == len(ref)-1 {
-		return "", "", fmt.Errorf("镜像引用 %q 应为 name:version 形式（先 boxli pull 导入）", ref)
+		return "", "", fmt.Errorf("镜像引用 %q 应为 name:version 形式（先 licore pull 导入）", ref)
 	}
 	return ref[:i], ref[i+1:], nil
 }
@@ -376,7 +376,7 @@ func autoName(st *store.Store, id string) string {
 		}
 	}
 	// 极端撞名场景：直接拼 ID 片段。
-	return "boxli_" + id
+	return "licore_" + id
 }
 
 func hexByte(s string, i int) (byte, error) {

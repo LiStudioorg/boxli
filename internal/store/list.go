@@ -13,7 +13,7 @@ import (
 	"strings"
 )
 
-// ImageInfo 是 `boxli images` 展示一行所需的信息：state.json 的运行期
+// ImageInfo 是 `licore images` 展示一行所需的信息：state.json 的运行期
 // 字段 + index.json 的清单字段（架构、层数）。
 type ImageInfo struct {
 	State

@@ -1,7 +1,7 @@
 // Copyright (C) 2026 LiStudioorg
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Package dev 实现 `boxli dev` 的热重载文件监视：轮询源码树的指纹
+// Package dev 实现 `licore dev` 的热重载文件监视：轮询源码树的指纹
 // （mtime + size + mode），把连续变化去抖成一个批次后交给上层触发
 // 重建与重启。
 //

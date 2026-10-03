@@ -71,7 +71,7 @@ func TestWireNetworkHostNone(t *testing.T) {
 	}
 }
 
-// TestWireNetworkPresetEnsured 验证缺省 boxli0 网络会自动补建（无 root 时
+// TestWireNetworkPresetEnsured 验证缺省 licore0 网络会自动补建（无 root 时
 // 网桥创建失败仅告警，不阻断端点登记与 IP 分配）。
 func TestWireNetworkPresetEnsured(t *testing.T) {
 	st := &store.Store{Root: t.TempDir()}

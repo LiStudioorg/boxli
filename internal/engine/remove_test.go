@@ -104,8 +104,8 @@ func TestRemoveRefusesRunning(t *testing.T) {
 		t.Fatalf("拒绝删除后容器目录必须保留: %v", err)
 	}
 	// 提示里应给出可执行的下一步
-	if err == nil || !strings.Contains(err.Error(), "boxli stop") {
-		t.Fatalf("错误提示应指引 boxli stop: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "licore stop") {
+		t.Fatalf("错误提示应指引 licore stop: %v", err)
 	}
 }
 

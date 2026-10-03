@@ -19,7 +19,7 @@ type JWTHeader struct {
 	Typ string `json:"typ"`
 }
 
-// JWTClaims 是 Boxli hub 令牌的声明。
+// JWTClaims 是 LiCore hub 令牌的声明。
 type JWTClaims struct {
 	Sub    string   `json:"sub"`              // 用户
 	Iat    int64    `json:"iat"`              // 签发秒

@@ -17,7 +17,7 @@ import (
 	"github.com/LiStudioorg/licore/internal/scaffold"
 )
 
-// newDoctorCommand 实现 `boxli doctor`：环境自检。
+// newDoctorCommand 实现 `licore doctor`：环境自检。
 func newDoctorCommand(out io.Writer) *cobra.Command {
 	var dataDir, version string
 	var testRun bool
@@ -49,7 +49,7 @@ func newDoctorCommand(out io.Writer) *cobra.Command {
 	return cmd
 }
 
-// newLintCommand 实现 `boxli lint`。
+// newLintCommand 实现 `licore lint`。
 func newLintCommand(out io.Writer) *cobra.Command {
 	var file, dir string
 	cmd := &cobra.Command{
@@ -89,8 +89,8 @@ func newLintCommand(out io.Writer) *cobra.Command {
 	return cmd
 }
 
-// newScaffoldCommand 实现 `boxli scaffold init`：生成 boxfile / compose 脚手架。
-// （`boxli init` 已被隐藏的容器 1 号进程入口占用，故脚手架放到 scaffold 命令下。）
+// newScaffoldCommand 实现 `licore scaffold init`：生成 boxfile / compose 脚手架。
+// （`licore init` 已被隐藏的容器 1 号进程入口占用，故脚手架放到 scaffold 命令下。）
 func newScaffoldCommand(out io.Writer) *cobra.Command {
 	var force bool
 	cmd := &cobra.Command{
@@ -99,7 +99,7 @@ func newScaffoldCommand(out io.Writer) *cobra.Command {
 	}
 	init := &cobra.Command{
 		Use:   "init",
-		Short: "生成 boxli 项目脚手架（boxfile / compose）",
+		Short: "生成 licore 项目脚手架（boxfile / compose）",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			res, err := scaffold.Init(".", force)

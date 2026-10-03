@@ -8,7 +8,7 @@
 // 背景：纯 Go 进程调用 setns(CLONE_NEWNS) 进入挂载命名空间会返回 EINVAL
 // （Go runtime 无法在纯 Go 下可靠 setns 到 mount namespace，见 Go issue
 // #9091）。runc/docker exec 的标准做法是用 cgo 在 fork 出的单线程子进程里
-// setns，再 exec 目标命令。boxli 用同样的方式实现：fork 出的子进程在
+// setns，再 exec 目标命令。licore 用同样的方式实现：fork 出的子进程在
 // fork-to-execve 之间是 C 单线程上下文，setns 因此成功。
 //
 // 仅此文件依赖 cgo；用 `-tags nocgo_exec` 或 CGO_ENABLED=0 回退到 stub。
@@ -40,7 +40,7 @@ package execns
 // fatal error: "failed to create new OS thread (have 2 already; errno=22)"。
 //
 // 纯 C/静态二进制（如 busybox）不会立刻建线程，所以看不出问题；但任何 Go
-// 程序在容器内都会立刻崩溃，而 boxli 的镜像与用户程序大量是 Go 写的。
+// 程序在容器内都会立刻崩溃，而 licore 的镜像与用户程序大量是 Go 写的。
 // 因此这里在 setns 全部完成后**再 fork 一次**：孙进程才是新 PID namespace
 // 的真正成员，其 clone(CLONE_THREAD) 合法。runc 用同样的两段式做法。
 //

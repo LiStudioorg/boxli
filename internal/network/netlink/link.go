@@ -13,7 +13,7 @@ import (
 )
 
 // ErrLinkNotFound 表示按名字找不到链路。
-var ErrLinkNotFound = errors.New("boxli/network/netlink: 链路不存在")
+var ErrLinkNotFound = errors.New("licore/network/netlink: 链路不存在")
 
 // 常用链路类型 kind 值。
 const (

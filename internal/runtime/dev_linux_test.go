@@ -264,8 +264,8 @@ func TestSetupContainerDevShmSize(t *testing.T) {
 // TestMountRootfsVolumesUnaffected 是回归保护：确认新增 /dev 逻辑没有
 // 改变卷挂载的解析与目标校验行为。
 func TestMountRootfsVolumesUnaffected(t *testing.T) {
-	// 没有 BOXLI_MOUNT_* 环境变量时应直接返回 nil（不挂任何东西）。
-	os.Unsetenv("BOXLI_MOUNT_COUNT")
+	// 没有 LICORE_MOUNT_* 环境变量时应直接返回 nil（不挂任何东西）。
+	os.Unsetenv("LICORE_MOUNT_COUNT")
 	if err := mountRootfsVolumes(t.TempDir()); err != nil {
 		t.Fatalf("无卷环境时应为 no-op: %v", err)
 	}

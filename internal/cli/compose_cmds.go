@@ -29,15 +29,15 @@ type composeCmd struct {
 	dataDir     string
 }
 
-// newComposeCommand 实现 `boxli compose`。
+// newComposeCommand 实现 `licore compose`。
 func newComposeCommand(out io.Writer) *cobra.Command {
 	cc := &composeCmd{out: out}
 	cmd := &cobra.Command{
 		Use:   "compose",
-		Short: "Boxli compose 服务编排",
-		Long:  "解析自研 compose 文件（默认 ./boxli-compose.yaml）并对服务做 up/down/ps/logs/scale 编排。",
+		Short: "LiCore compose 服务编排",
+		Long:  "解析自研 compose 文件（默认 ./licore-compose.yaml）并对服务做 up/down/ps/logs/scale 编排。",
 	}
-	cmd.PersistentFlags().StringVarP(&cc.file, "file", "f", "boxli-compose.yaml", "compose 文件路径")
+	cmd.PersistentFlags().StringVarP(&cc.file, "file", "f", "licore-compose.yaml", "compose 文件路径")
 	cmd.PersistentFlags().StringVarP(&cc.dataDir, "data-dir", "", "", "数据目录")
 	cmd.AddCommand(cc.config(out))
 	cmd.AddCommand(cc.up(out))
@@ -296,7 +296,7 @@ func (cc *composeCmd) buildService(out io.Writer, cmd *cobra.Command, st *store.
 		}
 	}
 	tag := composeServiceImageRef(p, s.Name)
-	outTmp, err := os.CreateTemp("", "boxli-compose-build-*.boxli")
+	outTmp, err := os.CreateTemp("", "licore-compose-build-*.licore")
 	if err != nil {
 		return err
 	}
@@ -327,7 +327,7 @@ func (cc *composeCmd) startService(cmd *cobra.Command, st *store.Store, p *compo
 	}
 	n, v := splitComposeRef(imageRef)
 	if ok, _ := st.Exists(n, v); !ok {
-		return fmt.Errorf("镜像 %s 未导入，请先 boxli pull", imageRef)
+		return fmt.Errorf("镜像 %s 未导入，请先 licore pull", imageRef)
 	}
 	env := make([]string, 0, len(s.Environment))
 	for _, k := range sortedKeysC(s.Environment) {

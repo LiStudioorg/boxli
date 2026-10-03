@@ -85,8 +85,8 @@ func manifestBuilder(t *testing.T, layers []Layer, cfgData []byte) []byte {
 	return b
 }
 
-// buildBoxli 在 dir 下写一个 .boxli 外层 tar 文件。
-func buildBoxli(t *testing.T, dir, name string, entries map[string][]byte) string {
+// buildLiCore 在 dir 下写一个 .licore 外层 tar 文件。
+func buildLiCore(t *testing.T, dir, name string, entries map[string][]byte) string {
 	t.Helper()
 	path := filepath.Join(dir, name)
 	f, err := os.Create(path)
@@ -112,7 +112,7 @@ func buildBoxli(t *testing.T, dir, name string, entries map[string][]byte) strin
 	return path
 }
 
-// fullValid 生成一个完全合法的 .boxli 文件路径。
+// fullValid 生成一个完全合法的 .licore 文件路径。
 func fullValid(t *testing.T) string {
 	t.Helper()
 	layerData, layerDigest := buildLayer(t, map[string]string{"etc/hello": "hi"})
@@ -120,7 +120,7 @@ func fullValid(t *testing.T) string {
 	layers := []Layer{{Path: "layers/000001.base.tar.gz", Digest: layerDigest, SizeBytes: int64(len(layerData)), ApplyOrder: 1}}
 	idx := manifestBuilder(t, layers, cfg)
 	algo, hx, _ := strings.Cut(digestOf(cfg), ":")
-	return buildBoxli(t, t.TempDir(), "test.boxli", map[string][]byte{
+	return buildLiCore(t, t.TempDir(), "test.licore", map[string][]byte{
 		IndexName:                   idx,
 		"layers/000001.base.tar.gz": layerData,
 		BlobsDir + algo + "-" + hx:  cfg,
@@ -155,7 +155,7 @@ func TestOpenFileRejectsTamperedLayer(t *testing.T) {
 	tampered := append([]byte{}, layerData...)
 	tampered[len(tampered)-3] ^= 0xFF // 保持大小不变，破坏内容
 	algo, hx, _ := strings.Cut(digestOf(cfg), ":")
-	path := buildBoxli(t, t.TempDir(), "t.boxli", map[string][]byte{
+	path := buildLiCore(t, t.TempDir(), "t.licore", map[string][]byte{
 		IndexName:                   idx,
 		"layers/000001.base.tar.gz": tampered,
 		BlobsDir + algo + "-" + hx:  cfg,
@@ -170,7 +170,7 @@ func TestOpenFileRejectsTamperedLayer(t *testing.T) {
 }
 
 func TestOpenFileMissingIndex(t *testing.T) {
-	path := buildBoxli(t, t.TempDir(), "t.boxli", map[string][]byte{"layers/x": []byte("x")})
+	path := buildLiCore(t, t.TempDir(), "t.licore", map[string][]byte{"layers/x": []byte("x")})
 	if _, err := OpenFile(path); !errors.Is(err, ErrBadManifest) {
 		t.Fatalf("err = %v, want ErrBadManifest", err)
 	}
@@ -185,7 +185,7 @@ func TestOpenFileLayerMissing(t *testing.T) {
 	}
 	idx := manifestBuilder(t, layers, cfg)
 	algo, hx, _ := strings.Cut(digestOf(cfg), ":")
-	path := buildBoxli(t, t.TempDir(), "t.boxli", map[string][]byte{
+	path := buildLiCore(t, t.TempDir(), "t.licore", map[string][]byte{
 		IndexName:                   idx,
 		"layers/000001.base.tar.gz": layerData,
 		BlobsDir + algo + "-" + hx:  cfg,
@@ -201,7 +201,7 @@ func TestOpenFileSizeMismatch(t *testing.T) {
 	layers := []Layer{{Path: "layers/000001.base.tar.gz", Digest: layerDigest, SizeBytes: int64(len(layerData)) + 1, ApplyOrder: 1}}
 	idx := manifestBuilder(t, layers, cfg)
 	algo, hx, _ := strings.Cut(digestOf(cfg), ":")
-	path := buildBoxli(t, t.TempDir(), "t.boxli", map[string][]byte{
+	path := buildLiCore(t, t.TempDir(), "t.licore", map[string][]byte{
 		IndexName:                   idx,
 		"layers/000001.base.tar.gz": layerData,
 		BlobsDir + algo + "-" + hx:  cfg,
@@ -216,7 +216,7 @@ func TestOpenFileConfigBlobMissing(t *testing.T) {
 	cfg := buildConfig(t)
 	layers := []Layer{{Path: "layers/000001.base.tar.gz", Digest: layerDigest, SizeBytes: int64(len(layerData)), ApplyOrder: 1}}
 	idx := manifestBuilder(t, layers, cfg)
-	path := buildBoxli(t, t.TempDir(), "t.boxli", map[string][]byte{
+	path := buildLiCore(t, t.TempDir(), "t.licore", map[string][]byte{
 		IndexName:                   idx,
 		"layers/000001.base.tar.gz": layerData, // 故意不放 config blob
 	})
@@ -226,7 +226,7 @@ func TestOpenFileConfigBlobMissing(t *testing.T) {
 }
 
 func TestOpenFileUnsafeEntry(t *testing.T) {
-	path := buildBoxli(t, t.TempDir(), "t.boxli", map[string][]byte{"../evil": []byte("x")})
+	path := buildLiCore(t, t.TempDir(), "t.licore", map[string][]byte{"../evil": []byte("x")})
 	if _, err := OpenFile(path); !errors.Is(err, ErrUnsafePath) {
 		t.Fatalf("err = %v, want ErrUnsafePath", err)
 	}
@@ -264,7 +264,7 @@ func TestParseManifestRejects(t *testing.T) {
 		want error
 	}{
 		{"bad mediaType", func(m map[string]any) { m["mediaType"] = "application/json" }, ErrBadManifest},
-		{"bad specVersion", func(m map[string]any) { m["specVersion"] = "boxli/image-spec/v99" }, ErrBadManifest},
+		{"bad specVersion", func(m map[string]any) { m["specVersion"] = "licore/image-spec/v99" }, ErrBadManifest},
 		{"bad schemaVersion", func(m map[string]any) { m["schemaVersion"] = float64(9) }, ErrBadManifest},
 		{"bad arch", func(m map[string]any) { m["architecture"] = "sparc64" }, ErrBadManifest},
 		{"invalid os", func(m map[string]any) { m["os"] = "windows" }, ErrBadManifest},

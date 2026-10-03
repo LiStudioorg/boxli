@@ -22,7 +22,7 @@ type bootCmdOpts struct {
 	dataDir string
 }
 
-// newBootTestCommand 实现 `boxli boot` 及子命令 enable/disable/status。
+// newBootTestCommand 实现 `licore boot` 及子命令 enable/disable/status。
 // 设计见 AGENTS.md《开机自启动机制》：boot 是一次性命令，非常驻。
 func newBootTestCommand(out io.Writer) *cobra.Command {
 	o := &bootCmdOpts{}
@@ -54,7 +54,7 @@ func newBootTestCommand(out io.Writer) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&o.dataDir, "data-dir", "", "数据目录（默认 $BOXLI_HOME 或 ~/.boxli）")
+	cmd.Flags().StringVar(&o.dataDir, "data-dir", "", "数据目录（默认 $LICORE_HOME 或 ~/.licore）")
 
 	enable := &cobra.Command{
 		Use:   "enable",
@@ -148,20 +148,20 @@ func newBootTestCommand(out io.Writer) *cobra.Command {
 				fmt.Fprintf(out, "  %-16s %-16s restart=%-15s %s\n", c.Name, c.ID, c.Restart, containerStateText(st, c.ID))
 			}
 			if !any {
-				fmt.Fprintln(out, "  （无：boxli run --restart always|unless-stopped 创建自启容器）")
+				fmt.Fprintln(out, "  （无：licore run --restart always|unless-stopped 创建自启容器）")
 			}
 			return nil
 		},
 	}
 
 	for _, sub := range []*cobra.Command{enable, disable, status} {
-		sub.Flags().StringVar(&o.dataDir, "data-dir", "", "数据目录（默认 $BOXLI_HOME 或 ~/.boxli）")
+		sub.Flags().StringVar(&o.dataDir, "data-dir", "", "数据目录（默认 $LICORE_HOME 或 ~/.licore）")
 	}
 	cmd.AddCommand(enable, disable, status)
 	return cmd
 }
 
-// newShutdownCommand 实现 `boxli shutdown`：由系统服务 ExecStop 调用，
+// newShutdownCommand 实现 `licore shutdown`：由系统服务 ExecStop 调用，
 // 优雅停止所有在运行的容器（SIGTERM shim → shim 转发容器 init）。
 func newShutdownCommand(out io.Writer) *cobra.Command {
 	var dataDir string
@@ -186,7 +186,7 @@ func newShutdownCommand(out io.Writer) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&dataDir, "data-dir", "", "数据目录（默认 $BOXLI_HOME 或 ~/.boxli）")
+	cmd.Flags().StringVar(&dataDir, "data-dir", "", "数据目录（默认 $LICORE_HOME 或 ~/.licore）")
 	return cmd
 }
 

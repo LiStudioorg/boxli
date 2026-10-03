@@ -18,7 +18,7 @@ func TestNatRuleArgsUseAddRule(t *testing.T) {
 	if strings.Contains(joined, "replace") {
 		t.Fatalf("masq 命令用了 replace（语法错误）: %s", joined)
 	}
-	if !strings.HasPrefix(joined, "add rule ip boxli post_nat") {
+	if !strings.HasPrefix(joined, "add rule ip licore post_nat") {
 		t.Fatalf("masq 命令结构错误: %s", joined)
 	}
 	if !strings.Contains(joined, "ip saddr 172.18.0.0/16 masquerade") {
@@ -31,7 +31,7 @@ func TestNatRuleArgsUseAddRule(t *testing.T) {
 	if strings.HasPrefix(j, "replace") {
 		t.Fatalf("dnat 命令用了 replace: %s", j)
 	}
-	if !strings.HasPrefix(j, "add rule ip boxli pre_nat") || !strings.Contains(j, "dnat to 172.18.0.2:80") {
+	if !strings.HasPrefix(j, "add rule ip licore pre_nat") || !strings.Contains(j, "dnat to 172.18.0.2:80") {
 		t.Fatalf("dnat 命令结构错误: %s", j)
 	}
 }

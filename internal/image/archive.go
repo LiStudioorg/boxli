@@ -28,7 +28,7 @@ type EntryInfo struct {
 
 // Loaded 是 OpenFile 的成功结果：已解析并交叉校验过的镜像文件视图。
 type Loaded struct {
-	// Path 是本地 .boxli 文件路径。
+	// Path 是本地 .licore 文件路径。
 	Path string
 	// Manifest 是解析后的 index.json。
 	Manifest *Manifest
@@ -50,7 +50,7 @@ func configBlobPath(digest string) string {
 	return BlobsDir + algo + "-" + hexsum
 }
 
-// OpenFile 打开本地 .boxli 文件，流式扫描外层 tar，完成规范第 4 节
+// OpenFile 打开本地 .licore 文件，流式扫描外层 tar，完成规范第 4 节
 // 清单类、结构类与 config blob 校验（层全量摘要在 VerifyLayers 中重算）。
 func OpenFile(path string) (*Loaded, error) {
 	f, err := os.Open(path)
@@ -242,7 +242,7 @@ func (l *Loaded) CheckPlatform() error {
 }
 
 // ExtractFile 把外层归档里的条目 name 流式解出到目标路径 dst（覆盖写）。
-// 供 `boxli run` 把层 tar.gz 取出交给 storage.UnpackFile；条目不存在报 ErrConfigMissing。
+// 供 `licore run` 把层 tar.gz 取出交给 storage.UnpackFile；条目不存在报 ErrConfigMissing。
 func (l *Loaded) ExtractFile(name, dst string) error {
 	if _, ok := l.entries[name]; !ok {
 		return fmt.Errorf("归档条目 %q 缺失: %w", name, ErrConfigMissing)
