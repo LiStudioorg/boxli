@@ -26,7 +26,10 @@ import (
 // 构造 .boxli 镜像 → 自动 pull 导入本地 store。
 //
 //	boxli build -t demo:v1 .
-//	boxli build -f Boxfile -t demo:v1 --context .
+//	boxli build -f Boxfile -t demo:v1 --context ./src
+//
+// 构建上下文**必须显式给出**（位置参数或 --context 二选一），理由见
+// resolveBuildContext 的注释：隐式默认 cwd 是"最坏失败模式"。
 func newBuildCommand(out io.Writer) *cobra.Command {
 	var (
 		file       string
@@ -37,26 +40,23 @@ func newBuildCommand(out io.Writer) *cobra.Command {
 		slim       bool
 	)
 	cmd := &cobra.Command{
-		Use:   "build [--file Boxfile] [--tag NAME:VERSION] [context]",
+		Use:   "build [--file Boxfile] [--tag NAME:VERSION] (--context DIR | <context>)",
 		Short: "根据 Boxfile 构建 .boxli 镜像并入本地 store",
 		Long: "解析 Boxfile（FROM/COPY/ENV/WORKDIR/ENTRYPOINT/CMD/EXPOSE/VOLUME/" +
 			"LABEL/USER/ARG），对基础镜像或 scratch 执行指令，构造一个 .boxli " +
-			"镜像并自动 boxli pull 导入本地 store。",
+			"镜像并自动 boxli pull 导入本地 store。\n" +
+			"构建上下文（COPY 源目录）必须显式指定：末尾位置参数或 --context，" +
+			"想用当前目录就传 \".\"。",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// 构建上下文：缺省为参数默认 "."。
-			if contextDir == "" {
-				contextDir = "."
-				if len(args) == 1 {
-					contextDir = args[0]
-				}
+			ctxDir, err := resolveBuildContext(contextDir, args)
+			if err != nil {
+				return err
 			}
+			contextDir = ctxDir
 			// Boxfile 路径：--file 优先，其次 <context>/Boxfile|boxfile。
 			if file == "" {
-				cand := []string{"Boxfile", "boxfile"}
-				if contextDir != "." && contextDir != "" {
-					cand = []string{filepath.Join(contextDir, "Boxfile"), filepath.Join(contextDir, "boxfile")}
-				}
+				cand := []string{filepath.Join(contextDir, "Boxfile"), filepath.Join(contextDir, "boxfile")}
 				found := ""
 				for _, c := range cand {
 					if _, err := os.Stat(c); err == nil {
@@ -65,7 +65,8 @@ func newBuildCommand(out io.Writer) *cobra.Command {
 					}
 				}
 				if found == "" {
-					return fmt.Errorf("build: 未找到 Boxfile，用 --file 指定")
+					return fmt.Errorf("build: 构建上下文 %s 下未找到 Boxfile/boxfile，用 --file 指定: %w",
+						contextDir, build.ErrNoContext)
 				}
 				file = found
 			}
@@ -135,11 +136,45 @@ func newBuildCommand(out io.Writer) *cobra.Command {
 	}
 	cmd.Flags().StringVarP(&file, "file", "f", "", "Boxfile 路径（默认 <context>/Boxfile 或 ./Boxfile）")
 	cmd.Flags().StringVarP(&tag, "tag", "t", "", "镜像引用 NAME:VERSION（默认由 Boxfile FROM 或文件名派生）")
-	cmd.Flags().StringVarP(&contextDir, "context", "", ".", "构建上下文目录（COPY 源相对它解析）")
+	cmd.Flags().StringVarP(&contextDir, "context", "", "", "构建上下文目录（COPY 源相对它解析；与末尾位置参数二选一）")
 	cmd.Flags().StringVar(&dataDir, "data-dir", "", "数据目录（默认 $BOXLI_HOME 或 ~/.boxli）")
 	cmd.Flags().BoolVar(&noCache, "no-cache", false, "禁用构建缓存（Boxli 始终从基础镜像重建）")
 	cmd.Flags().BoolVar(&slim, "slim", false, "构建精简镜像（当前与常规构建同）")
 	return cmd
+}
+
+// resolveBuildContext 决定构建上下文目录，规则（缺失必报错、冲突必拒绝）：
+//
+//   - 只给位置参数 → 用它；只给 --context → 用它；
+//   - 两者都给了：Clean 后字符串相等 → 放行；不等 → 报错拒绝，绝不猜；
+//   - 两者都没给 → 报错，**不默认 "."**。
+//
+// 为什么不默认 cwd：上下文目录决定 COPY 把哪些文件打进镜像。旧实现里
+// --context 的 flag 默认值是 "."，而判空分支 `if contextDir == ""` 因此
+// 永远不成立——位置参数被**静默忽略**，COPY 从 cwd 解析。这意味着"以为
+// 在构建 A 目录、实际打了 cwd"：构建出错误镜像还是小事，cwd 里恰好有
+// 私钥/配置而 Boxfile 写了 COPY . 时，敏感文件会被静默打进镜像分发出去，
+// 且用户全程无任何提示。宁可让用户多敲一个 "."，也不做静默猜测。
+func resolveBuildContext(flagCtx string, args []string) (string, error) {
+	var pos string
+	if len(args) == 1 {
+		pos = args[0]
+	}
+	switch {
+	case flagCtx != "" && pos != "":
+		if filepath.Clean(flagCtx) == filepath.Clean(pos) {
+			return flagCtx, nil
+		}
+		return "", fmt.Errorf("build: 位置参数上下文 %q 与 --context %q 冲突，二者只能选一个（或传相同路径）: %w",
+			pos, flagCtx, build.ErrNoContext)
+	case flagCtx != "":
+		return flagCtx, nil
+	case pos != "":
+		return pos, nil
+	default:
+		return "", fmt.Errorf("build: 必须显式指定构建上下文（COPY 的源目录），当前目录就传 \".\"，例如：boxli build -t NAME:VERSION <context>: %w",
+			build.ErrNoContext)
+	}
 }
 
 // resolveBuildBase 把 FROM 引用解析为本地已导入镜像的 source.boxli 路径。

@@ -19,7 +19,7 @@ export BOXLI_HOME=/tmp/boxli-e2e
 # 准备一个带入口的临时 rootfs/busybox 构建上下文（示例，按需调整）
 mkdir -p /tmp/boxli-src && cd /tmp/boxli-src
 # ……放入业务文件……
-./boxli build --file /tmp/boxli-src/Boxfile
+./boxli build --file /tmp/boxli-src/Boxfile /tmp/boxli-src   # 上下文必须显式给出
 ./boxli pull ./demo.boxli          # 本地导入构建产物（若产出 .boxli 文件）
 ```
 
