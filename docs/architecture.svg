@@ -1,0 +1,163 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 700" width="980" height="700" role="img" aria-labelledby="title desc">
+  <title id="title">LiCore 架构与 Docker 对比</title>
+  <desc id="desc">LiCore 无守护进程：licore CLI 直接 fork 每容器 shim，shim 持有容器 init；Docker 则由常驻 dockerd 经 containerd/runc 启动容器。</desc>
+
+  <defs>
+    <style>
+      .bg     { fill:#ffffff; }
+      .panel  { fill:#f8fafc; stroke:#cbd5e1; stroke-width:1; }
+      .grp    { fill:#ffffff; stroke:#94a3b8; stroke-width:1.2; }
+      .box    { fill:#ffffff; stroke:#475569; stroke-width:1.4; rx:6; }
+      .boxA   { fill:#eef6ff; stroke:#2563eb; stroke-width:1.4; rx:6; }
+      .boxB   { fill:#f0fdf4; stroke:#16a34a; stroke-width:1.4; rx:6; }
+      .boxC   { fill:#fff7ed; stroke:#ea580c; stroke-width:1.4; rx:6; }
+      .ghost  { fill:#f1f5f9; stroke:#94a3b8; stroke-width:1.2; stroke-dasharray:5 4; rx:6; }
+      .lbl    { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans CJK SC","Source Han Sans SC",sans-serif; fill:#0f172a; }
+      .title  { font-size:19px; font-weight:700; }
+      .sub    { font-size:13px; font-weight:600; fill:#334155; }
+      .t      { font-size:12.5px; }
+      .ts     { font-size:11px; fill:#64748b; }
+      .mono   { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12px; }
+      .flow   { stroke:#334155; stroke-width:1.6; fill:none; marker-end:url(#arrow); }
+      .flowA  { stroke:#2563eb; stroke-width:1.6; fill:none; marker-end:url(#arrowA); }
+      .dash   { stroke:#94a3b8; stroke-width:1.3; fill:none; stroke-dasharray:5 4; marker-end:url(#arrow); }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#334155"/>
+    </marker>
+    <marker id="arrowA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="980" height="700"/>
+  <text class="lbl title" x="24" y="34">LiCore 架构：无守护进程（对照 Docker）</text>
+  <text class="lbl ts" x="24" y="54">左：LiCore —— 单二进制按需执行，每个容器由一个轻量 shim 持有。右：Docker —— 常驻 dockerd。</text>
+
+  <!-- ================= 左：LiCore ================= -->
+  <rect class="panel" x="20" y="70" width="580" height="612" rx="10"/>
+  <text class="lbl sub" x="40" y="94">LiCore（自研生态，不兼容 Docker / OCI）</text>
+
+  <!-- 用户 -->
+  <rect class="box" x="200" y="110" width="220" height="42" rx="6"/>
+  <text class="lbl t" x="310" y="130" text-anchor="middle">用户 / 脚本 / CI</text>
+  <text class="lbl ts" x="310" y="145" text-anchor="middle">licore run · ps · exec · build</text>
+
+  <path class="flow" d="M 310 152 L 310 182"/>
+
+  <!-- CLI -->
+  <rect class="boxA" x="160" y="182" width="300" height="70" rx="6"/>
+  <text class="lbl t" x="310" y="204" text-anchor="middle" font-weight="700">licore CLI（单二进制）</text>
+  <text class="lbl ts" x="310" y="222" text-anchor="middle">internal/cli · engine 编排</text>
+  <text class="lbl ts" x="310" y="238" text-anchor="middle">无守护进程：执行完即退出</text>
+
+  <!-- 分叉到 shim -->
+  <path class="flowA" d="M 230 252 L 230 300"/>
+  <path class="flowA" d="M 390 252 L 390 300"/>
+  <text class="lbl ts" x="238" y="280">fork</text>
+  <text class="lbl ts" x="398" y="280">fork</text>
+
+  <!-- shim 组 -->
+  <rect class="grp" x="60" y="300" width="500" height="112" rx="8"/>
+  <text class="lbl ts" x="72" y="318">每容器一个 shim 进程（类似 conmon，随容器退出而退出）</text>
+
+  <rect class="boxB" x="80" y="326" width="200" height="72" rx="6"/>
+  <text class="lbl t" x="180" y="348" text-anchor="middle" font-weight="700">shim #1</text>
+  <text class="lbl ts" x="180" y="366" text-anchor="middle">restart 策略 · 日志</text>
+  <text class="lbl ts" x="180" y="382" text-anchor="middle">写 runtime.json</text>
+
+  <rect class="boxB" x="340" y="326" width="200" height="72" rx="6"/>
+  <text class="lbl t" x="440" y="348" text-anchor="middle" font-weight="700">shim #N</text>
+  <text class="lbl ts" x="440" y="366" text-anchor="middle">无全局常驻进程</text>
+  <text class="lbl ts" x="440" y="382" text-anchor="middle">≈ 每容器 2.3 MiB</text>
+
+  <path class="flow" d="M 180 398 L 180 442"/>
+  <path class="flow" d="M 440 398 L 440 442"/>
+
+  <!-- 容器进程 -->
+  <rect class="boxC" x="80" y="442" width="460" height="86" rx="6"/>
+  <text class="lbl t" x="310" y="464" text-anchor="middle" font-weight="700">容器进程（PID 1 = licore init）</text>
+  <text class="lbl ts" x="310" y="483" text-anchor="middle">namespace：mount · pid · uts · ipc · net（+ 非 root 时 user）</text>
+  <text class="lbl ts" x="310" y="500" text-anchor="middle">pivot_root 换根 · cgroup v2（回退 v1）限额 · veth 接入网桥</text>
+  <text class="lbl ts" x="310" y="517" text-anchor="middle">exec 需 cgo：setns 进入挂载命名空间</text>
+
+  <!-- 存储链 -->
+  <rect class="grp" x="60" y="552" width="500" height="112" rx="8"/>
+  <text class="lbl sub" x="72" y="572">存储：镜像 → 层 → rootfs</text>
+
+  <rect class="box" x="76" y="582" width="138" height="62" rx="6"/>
+  <text class="lbl t" x="145" y="605" text-anchor="middle">.licore 镜像</text>
+  <text class="lbl ts" x="145" y="622" text-anchor="middle">index.json</text>
+  <text class="lbl ts" x="145" y="637" text-anchor="middle">+ gzip 分层</text>
+
+  <path class="flow" d="M 214 613 L 250 613"/>
+
+  <rect class="box" x="250" y="582" width="150" height="62" rx="6"/>
+  <text class="lbl t" x="325" y="605" text-anchor="middle">层缓存（内容寻址）</text>
+  <text class="lbl ts" x="325" y="622" text-anchor="middle">layers/sha256/&lt;hex&gt;</text>
+  <text class="lbl ts" x="325" y="637" text-anchor="middle">跨容器共享</text>
+
+  <path class="flow" d="M 400 613 L 436 613"/>
+
+  <rect class="box" x="436" y="582" width="112" height="62" rx="6"/>
+  <text class="lbl t" x="492" y="605" text-anchor="middle">rootfs</text>
+  <text class="lbl ts" x="492" y="622" text-anchor="middle">合并 + 读写层</text>
+  <text class="lbl ts" x="492" y="637" text-anchor="middle">容器独占</text>
+
+  <!-- 数据目录说明 -->
+  <text class="lbl ts" x="76" y="678">数据目录 ~/.licore ： containers/&lt;id&gt;/（config.json + runtime.json）· images/ · layers/</text>
+
+  <!-- ================= 右：Docker 对比 ================= -->
+  <rect class="panel" x="620" y="70" width="340" height="612" rx="10"/>
+  <text class="lbl sub" x="640" y="94">Docker（对照）</text>
+
+  <rect class="box" x="700" y="110" width="180" height="42" rx="6"/>
+  <text class="lbl t" x="790" y="130" text-anchor="middle">用户</text>
+  <text class="lbl ts" x="790" y="145" text-anchor="middle">docker run …</text>
+
+  <path class="flow" d="M 790 152 L 790 182"/>
+
+  <rect class="boxA" x="690" y="182" width="200" height="52" rx="6"/>
+  <text class="lbl t" x="790" y="203" text-anchor="middle">docker CLI</text>
+  <text class="lbl ts" x="790" y="220" text-anchor="middle">通过 socket 通信</text>
+
+  <path class="dash" d="M 790 234 L 790 264"/>
+  <text class="lbl ts" x="798" y="253">/var/run/docker.sock</text>
+
+  <!-- 常驻守护进程 -->
+  <rect class="ghost" x="660" y="264" width="260" height="118" rx="8"/>
+  <text class="lbl t" x="790" y="286" text-anchor="middle" font-weight="700">dockerd（常驻守护进程）</text>
+  <text class="lbl ts" x="790" y="305" text-anchor="middle">开机即运行 · root 权限 · 全局单点</text>
+
+  <rect class="box" x="676" y="316" width="108" height="52" rx="6"/>
+  <text class="lbl t" x="730" y="338" text-anchor="middle" font-size="11.5">containerd</text>
+  <text class="lbl ts" x="730" y="354" text-anchor="middle" font-size="10.5">常驻</text>
+
+  <rect class="box" x="796" y="316" width="108" height="52" rx="6"/>
+  <text class="lbl t" x="850" y="338" text-anchor="middle" font-size="11.5">runc</text>
+  <text class="lbl ts" x="850" y="354" text-anchor="middle" font-size="10.5">拉起容器</text>
+
+  <path class="dash" d="M 790 382 L 790 412"/>
+  <text class="lbl ts" x="798" y="401">OCI 运行时</text>
+
+  <rect class="boxC" x="690" y="412" width="200" height="62" rx="6"/>
+  <text class="lbl t" x="790" y="434" text-anchor="middle" font-weight="700">容器进程</text>
+  <text class="lbl ts" x="790" y="452" text-anchor="middle">Docker 镜像格式（OCI）</text>
+  <text class="lbl ts" x="790" y="467" text-anchor="middle">与 LiCore 互不兼容</text>
+
+  <!-- 对比要点 -->
+  <rect class="grp" x="640" y="500" width="300" height="164" rx="8"/>
+  <text class="lbl sub" x="654" y="520">关键差异</text>
+
+  <text class="lbl t" x="654" y="543">• 守护进程</text>
+  <text class="lbl ts" x="668" y="559">LiCore 无常驻进程；Docker 有 dockerd</text>
+
+  <text class="lbl t" x="654" y="582">• 镜像格式</text>
+  <text class="lbl ts" x="668" y="598">.licore 自研格式；不读 OCI 镜像</text>
+
+  <text class="lbl t" x="654" y="621">• 内存占用</text>
+  <text class="lbl ts" x="668" y="637">LiCore 每容器 ≈ 2.3 MiB（实测）</text>
+
+  <text class="lbl t" x="654" y="650">• 组件依赖</text>
+  <text class="lbl ts" x="668" y="666">零外部容器组件，单个二进制</text>
+</svg>

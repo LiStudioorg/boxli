@@ -18,6 +18,11 @@
 
 LiCore 是一个用 Go 编写的轻量级容器引擎：常驻内存 10–20 MiB，单二进制分发，覆盖 Linux / Android / macOS —— 但它是**完全自研生态，不兼容 Docker / OCI**。
 
+![LiCore 架构：无守护进程，对照 Docker](docs/architecture.svg)
+
+> 左侧是 LiCore：单个二进制按需执行，**没有常驻守护进程**，每个容器由一个轻量 shim 持有。
+> 右侧是对照的 Docker：常驻 `dockerd` → containerd → runc。图源 [docs/architecture.svg](docs/architecture.svg)。
+
 ## 特性
 
 - 🪶 **极轻**：运行时内存目标 10–20 MiB，单个静态二进制；除可选的 `internal/execns`（`exec` 进入容器挂载命名空间）外全部为纯 Go。
@@ -402,6 +407,99 @@ go vet ./...           # 静态检查
 gofmt -l .             # 格式检查
 go test ./...          # 测试
 ```
+
+## 常见问题
+
+### 1. 为什么不用 Docker？
+
+因为目标是**在 Docker 已经够用的地方之外**找一个更轻的点。Docker 需要常驻 `dockerd`，
+再经 containerd / runc 拉起容器；LiCore 是单个二进制，按需执行，**没有任何常驻守护进程**，
+每个容器由一个轻量 shim 持有。实测每容器成本约 **2.3 MiB**（见《实测 / 未验证》）。
+
+需要说明的是：**如果你要的是生态，Docker 是对的答案**。LiCore 不兼容 Docker / OCI 镜像，
+拿不到 Docker Hub 的现成镜像。它的定位是"自己能完全掌控、代码量小到可以通读"的容器引擎。
+
+### 2. 兼容 Docker 镜像吗？
+
+**不兼容，而且是刻意不兼容。**
+
+- `.licore` 是自研格式（分层 gzip tar + 自研 `index.json`），**不能**由 Docker 构建或运行。
+- Docker / OCI 镜像也**不能**被 LiCore 使用；不实现 Distribution API，不做镜像格式转换。
+- `licore pull` 的 Hub 也是自研服务端，与 Docker Registry 无关。
+
+LiCore 只认 `.licore`。这不是"还没做"，是设计选择（见 [docs/image-spec.md](docs/image-spec.md)）。
+
+### 3. Android 无 Root 能用吗？
+
+**官方不支持。**
+
+无 Root 的 Android 缺少容器所需的内核隔离能力（namespace / cgroup / setns 等）。任何
+用户态方案（包括 proot）都只能模拟根目录，无法提供真正的进程 / 挂载 / 网络 / 资源隔离——
+这与 LiCore "真隔离" 的模型冲突。
+
+你可以自行在 proot / Termux 等用户态 Linux 环境里运行 `licore`，但官方不保证可用性、
+不提供技术支持。LiCore **不做** proot 适配、**不检测** proot、**不集成** proot。
+**有 Root 才是官方支持路径**（走 `native_linux` 后端，与 Linux 服务器功能一致）。
+
+### 4. 现在能上生产吗？
+
+**请按"可评估、勿托付"来对待。**
+
+- ✅ 在 **Linux root 服务器**上做过 A–J 全功能验收（PASS=10 / SKIP=1 / FAIL=0，见
+  [docs/test-report-v0.6.0.md](docs/test-report-v0.6.0.md)），日常 `run / ps / exec / 卷 / 资源限制`
+  是能跑通的。
+- ⚠️ **Android 真机、macOS、多主机网络、大规模并发都未验证**（见下节）。
+- ⚠️ 项目**尚未发布 1.0**，接口与行为仍可能变化；层缓存不做引用计数回收；`exec` 需要 cgo 构建。
+- ⚠️ 目前**没有真实用户群**，出问题时你基本得自己读源码。
+
+**建议**：适合在个人服务器、实验环境、CI 里试；把重要业务压上去之前，请先自己按
+[docs/verify-root.md](docs/verify-root.md) 在你的机器上验一遍。
+
+### 5. 为什么是 AGPL？
+
+为了让"改进回到社区"这件事对**服务化使用**同样成立：如果有人把 LiCore 改一改做成
+托管服务对外提供，AGPL 要求其修改同样开源。对普通自用、内部部署而言，AGPL 与 MIT
+一样没有额外义务。
+
+如果你需要其它许可（例如闭源集成），欢迎开 issue 说明用途。
+
+## 实测 / 未验证
+
+诚实地划分边界——**下列"未验证"项不代表不能用，只代表我们没在真实环境里跑过**。
+
+### 已实测
+
+| 项目 | 结论 | 依据 |
+| --- | --- | --- |
+| Linux 服务器（root）全功能验收 | **A–J：PASS=10 / SKIP=1 / FAIL=0** | [docs/test-report-v0.6.0.md](docs/test-report-v0.6.0.md) |
+| 每容器内存成本 | 100 容器并发实测系统增量 **227 MiB**，摊薄 **≈ 2.3 MiB/容器**，退出后完全回收 | [docs/runtime-benchmark.md](docs/runtime-benchmark.md) |
+| 100 容器并发启动 | 共享同一 rootfs 并发启动 **0 失败** | 同上 |
+| 多平台交叉编译 | CI 每次推送都跑：**8 个目标平台**（linux amd64/arm64/arm/386/riscv64、android arm64、darwin amd64/arm64）+ android/linux 两个 cgo 构建，全部通过 | GitHub Actions |
+| 静态 / 安全 / 覆盖审计 | 见各版本审计报告 | [docs/audit-v0.6.0.md](docs/audit-v0.6.0.md) 等 |
+| 发布流程本身 | v0.7.1 真实发布：**11 个归档 + SHA256SUMS** 全部上传，下载后 `sha256sum -c` 校验通过 | [Releases](https://github.com/LiStudioorg/licore/releases) |
+
+> 说明：CI 共 11 个 job（8 个交叉编译 + 格式与测试 + 2 个 cgo）。**"8 个平台"指 GOOS/GOARCH
+> 组合数**；加上 linux/amd64、linux/arm64、android/arm64 的 cgo 变体，发布时产出 **11 个归档**。
+
+> **那一项 SKIP 是什么**：`-p` 端口映射的宿主外部可达性。验收主机为 rootless-docker +
+> ufw FORWARD DROP 环境，Docker 自身的端口映射同样不通（作对照），因此改在标准 root 主机
+> 验证——目前**尚未**在标准主机上补测。
+
+### 未验证
+
+| 项目 | 状态 | 说明 |
+| --- | --- | --- |
+| **Android 真机** | ❌ 未验证 | 适配层已实现、`doctor` 有 `android.env` 检查项，但**没有在真实设备上跑过**；SELinux enforcing 行为未实测 |
+| **macOS** | ❌ 未验证 | `vm_darwin` 后端（轻量 VM 路线）**尚未实现**，当前仅保证可交叉编译 |
+| **多主机网络** | ❌ 未验证 | 只做单机 bridge / veth / NAT；跨主机容器网络未实现也未测试 |
+| **大规模并发** | ⚠️ 仅到 100 | 100 容器已实测；更高密度、长时间运行、压测下的稳定性未验证 |
+| **非 root（rootless）完整功能** | ⚠️ 部分 | user namespace 可跑，但网络仅 host / none，cgroup 限额视委派而定 |
+| **`licore boot enable`** | ⚠️ 部分 | systemd unit **生成与内容**已验证；未在真机实际 `enable` 并重启验证 |
+| **Windows** | ❌ 不支持 | 无计划 |
+| **ARM / 386 / riscv64 真机运行** | ⚠️ 仅交叉编译 | 这些平台**能编译通过**，但未在对应硬件上运行验证 |
+
+> 我们宁可在 README 里写"没验证过"，也不希望你踩到才发现。发现文档与实现不符请
+> 直接开 issue——那属于 bug。
 
 ## 开源协议
 
