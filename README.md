@@ -2,8 +2,6 @@
 
 > 用 Go 编写的轻量级容器引擎：无守护进程，2.3 MiB/容器，覆盖 Linux / Android / macOS；自研 `.licore` 镜像格式，不兼容 OCI。
 
-LiCore 是一个用 Go 编写的轻量级容器引擎：常驻内存 10–20 MiB，单二进制分发，覆盖 Linux / Android / macOS —— 但它是**完全自研生态，不兼容 Docker / OCI**。
-
 ![LiCore 架构：无守护进程，对照 Docker](docs/architecture.svg)
 
 > 左侧是 LiCore：单个二进制按需执行，**没有常驻守护进程**，每个容器由一个轻量 shim 持有。
@@ -21,7 +19,7 @@ LiCore 是一个用 Go 编写的轻量级容器引擎：常驻内存 10–20 MiB
 
 ## 快速开始
 
-> LiCore 已进入 **v0.6.0**：镜像、运行时、网络、卷、资源限制、`exec`、Hub 分发均落地，`licore build` 真正构建并导入镜像、`compose up/scale` 真正创建容器；v0.6.0 补齐了 cgroup 限额真正生效、`exec` 进入全部命名空间、卷 `:ro` 只读、同名并发创建的原子性，并修复了 netlink 组包缺陷。真机验收与审计见 [docs/test-report-v0.6.0.md](docs/test-report-v0.6.0.md)、[docs/audit-v0.6.0.md](docs/audit-v0.6.0.md)。
+> LiCore 已发布 **v0.7.1**：镜像、运行时、网络、卷、资源限制、`exec`、Hub 分发均落地，`licore build` 真正构建并导入镜像、`compose up/scale` 真正创建容器。v0.6.0 补齐了 cgroup 限额真正生效、`exec` 进入全部命名空间、卷 `:ro` 只读、同名并发创建的原子性，并修复了 netlink 组包缺陷；v0.7.x 起加入 CI / 自动发布与一行安装脚本。真机验收与审计见 [docs/test-report-v0.6.0.md](docs/test-report-v0.6.0.md)、[docs/audit-v0.6.0.md](docs/audit-v0.6.0.md)。
 
 ```bash
 licore build -t demo:v1 .                            # 根据 Boxfile 构建 .licore 并自动导入
@@ -486,6 +484,8 @@ LiCore 只认 `.licore`。这不是"还没做"，是设计选择（见 [docs/ima
 
 > 我们宁可在 README 里写"没验证过"，也不希望你踩到才发现。发现文档与实现不符请
 > 直接开 issue——那属于 bug。
+
+> 项目原名 Boxli，自 v0.7.0 起更名为 LiCore。历史 tag（v0.1.0 ~ v0.6.1）保留可用。
 
 ## 开源协议
 
