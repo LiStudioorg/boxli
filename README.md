@@ -1,20 +1,6 @@
 # LiCore
 
-> **📢 项目改名通知**
-> 本项目原名 Boxli，自 v0.7.0 起更名为 **LiCore**。
->
-> - GitHub 旧地址 `github.com/LiStudioorg/boxli` 自动重定向至新地址
-> - 二进制从 `boxli` 更名为 `licore`
-> - 镜像后缀从 `.boxli` 更名为 `.licore`
-> - 数据目录从 `~/.boxli` 更改为 `~/.licore`
-> - Go module 路径从 `github.com/LiStudioorg/boxli` 更改为 `github.com/LiStudioorg/licore`
-> - 环境变量从 `BOXLI_*` 更名为 `LICORE_*`，网络名 `boxli0` → `licore0`，
->   cgroup 根 `/sys/fs/cgroup/boxli` → `/sys/fs/cgroup/licore`
-> - 历史 tag（v0.1.0 ~ v0.6.1）保留，仍可拉取
-> - 从 v0.7.0 起新版本使用新名称
->
-> ⚠️ **无数据迁移**：项目改名时尚未发布、无用户，因此不提供 `~/.boxli` →
-> `~/.licore` 的自动迁移，也不保留旧路径兼容。
+> 用 Go 编写的轻量级容器引擎：无守护进程，2.3 MiB/容器，覆盖 Linux / Android / macOS；自研 `.licore` 镜像格式，不兼容 OCI。
 
 LiCore 是一个用 Go 编写的轻量级容器引擎：常驻内存 10–20 MiB，单二进制分发，覆盖 Linux / Android / macOS —— 但它是**完全自研生态，不兼容 Docker / OCI**。
 
