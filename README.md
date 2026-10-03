@@ -52,6 +52,95 @@ licore stats                                         # 实时查看容器资源�
 > ⚠️ v0.4.0 起网络 veth、cgroup 写入、`licore exec` 需要 **root**（CAP_NET_ADMIN / CAP_SYS_ADMIN）；
 > 未实现的资源能力（`--storage`/`--gpu`/`--npu`/`--network-bandwidth`）会显式报错而非静默生效。
 
+## 安装
+
+### 方式一：一行命令（推荐）
+
+自动检测系统与架构，下载对应归档并校验安装：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/LiStudioorg/licore/main/scripts/install.sh | sudo bash
+```
+
+装到用户目录（无需 root）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/LiStudioorg/licore/main/scripts/install.sh \
+  | bash -s -- --prefix "$HOME/.local/bin"
+```
+
+装之前先看它要做什么（不下载、不写入）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/LiStudioorg/licore/main/scripts/install.sh | bash -s -- --dry-run
+```
+
+常用选项：
+
+| 选项 | 说明 |
+| --- | --- |
+| `--version <TAG>` | 指定版本，如 `--version v0.7.0`（默认取最新 Release） |
+| `--prefix <DIR>` | 安装目录（默认 `/usr/local/bin`） |
+| `--dry-run` | 只显示将执行的操作 |
+| `--force` | 目标已存在时覆盖（默认拒绝覆盖） |
+
+脚本行为约定：平台不支持、校验失败、目标已存在等情况一律**明确报错并停止**，不静默降级；
+不会改写你的 `.bashrc` / `.zshrc`，若安装目录不在 `PATH` 中只提示一句。
+退出码：`2` 用法错误、`3` 平台不支持、`4` 校验失败、`5` 权限不足。
+
+> **关于校验的边界（不夸大）**：脚本比对归档的 SHA256，能发现**传输损坏**与归档不完整；
+> 但 `SHA256SUMS` 与归档来自**同一 Release、同一 HTTPS 来源**，因此**不能防篡改**——
+> 能改归档的一方同样能改校验和。真正防篡改需要签名（cosign / GPG）与独立信任根，
+> 当前版本未引入。
+
+### 方式二：手动下载二进制
+
+到 [Releases](https://github.com/LiStudioorg/licore/releases) 选择对应平台的归档：
+
+```bash
+# 以 linux/amd64 为例
+curl -fsSLO https://github.com/LiStudioorg/licore/releases/latest/download/licore-linux-amd64.tar.gz
+curl -fsSLO https://github.com/LiStudioorg/licore/releases/latest/download/SHA256SUMS
+
+sha256sum -c SHA256SUMS --ignore-missing   # macOS 用 shasum -a 256 -c
+tar -xzf licore-linux-amd64.tar.gz          # 内含 licore + README.md + LICENSE
+sudo install -m 0755 licore /usr/local/bin/licore
+```
+
+归档命名规则：`licore-<os>-<arch>[-cgo].tar.gz`。带 **`-cgo`** 后缀的包支持
+`licore exec`，不带的为纯 Go 构建（exec 不可用，其余功能完整）。
+
+### 方式三：从源码编译
+
+```bash
+git clone https://github.com/LiStudioorg/licore.git
+cd licore
+make all              # linux/amd64 + linux/arm64 + android/arm64，产物在 dist/
+# 或直接编译当前平台：
+go build -o licore .
+```
+
+> ⚠️ `make install` 与 `make linux` 产出的是**纯 Go** 构建，**没有 `licore exec`**。
+> 需要 exec 请显式启用 cgo：`CGO_ENABLED=1 go build -o licore .`（详见《构建矩阵》）。
+
+### 平台支持矩阵
+
+| 平台 | 安装方式 | 是否可用 | root | cgo | `licore exec` |
+| --- | --- | --- | --- | --- | --- |
+| Linux amd64 / arm64 | 一行命令 / 手动 / 源码 | ✅ 完整支持 | 需要（网络、cgroup、exec） | 可选 | 仅 `-cgo` 包 |
+| Linux arm / 386 / riscv64 | 一行命令 / 手动 / 源码 | ✅ 完整支持 | 需要 | 仅提供纯 Go | ❌ 明确报错 |
+| Android arm64（有 Root） | 一行命令 / 手动 / NDK 编译 | ✅ 官方原生支持 | 需要 | 一行命令默认取 `-cgo` 包 | ✅（cgo 包） |
+| Android arm64（无 Root） | — | ❌ 官方不支持 | — | — | — |
+| macOS amd64 / arm64 | 一行命令 / 手动 / 源码 | ⚠️ 通过轻量 VM | 不需要 | 仅提供纯 Go | ❌ |
+
+- **Linux 非 root**：镜像、卷、`build`、`run`（host/none 网络）可用；网络 veth、cgroup 限制、
+  `exec` 需要 root。
+- **Android 无 Root 官方不支持**：无 Root 环境缺少容器所需的内核隔离能力
+  （namespace / cgroup / setns）。LiCore 不做 proot 适配、不检测 proot、不集成 proot；
+  你可以在 proot / Termux 等用户态 Linux 环境中自行运行，但官方不保证可用性。
+- 更细的能力对比见《[平台能力矩阵](#平台能力矩阵v060-实测)》，Android 适配细节见
+  [docs/android-root.md](docs/android-root.md)。
+
 ## Hub 分发（login / pull / push / search）
 
 LiCore 自研分发服务（不兼容 Docker Distribution API）。先登录，再推送与拉取：
