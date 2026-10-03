@@ -1,4 +1,4 @@
-# Boxli 审计报告 v0.6.0
+# LiCore 审计报告 v0.6.0
 
 范围：在 v0.6.0 真机验证 + 测试基础上，做静态审计 / 安全审计 / 覆盖率 / 修复清单。
 
@@ -18,7 +18,7 @@
 - **defer 在循环内 / time.After 循环**：未发现。
 - **context 未传递/未取消**：hub/network/shutdown 均用 context；`signal.NotifyContext` 统一。
 - **整数溢出 / 除零 / 边界**：gosec G115 的 `byte(v>>8)` 是**有意的字节序打包**（非溢出）；`int64(st.Rdev)` 取设备号安全。
-- **硬编码路径/端口/超时**：预设 `boxli0`/`172.18.0.0/16` 已做冲突避让（pickFreeSubnet）；SO_RCVTIMEO/宽限等有常量集中。
+- **硬编码路径/端口/超时**：预设 `licore0`/`172.18.0.0/16` 已做冲突避让（pickFreeSubnet）；SO_RCVTIMEO/宽限等有常量集中。
 
 ## 2. 安全审计
 
@@ -30,7 +30,7 @@
 | 不安全临时文件 | ✅ 一律 `os.CreateTemp` 或同目录 `.tmp`+rename 原子替换 |
 | TOCTOU | ⚠️ 已在 2 处发现并修：store 容器名唯一性（原扫描竞态→O_EXCL 锁）；`:ro` 卷 bind 后未 remount 只读 |
 | cgroup/namespace 权限 | ✅ exec 非 root 报 ErrNotRoot；容器 rootless 判定按 euid |
-| capabilities 剥离 | ⚠️ boxli 不主动 drop caps（非 OCI 目标）；文档已注明 |
+| capabilities 剥离 | ⚠️ licore 不主动 drop caps（非 OCI 目标）；文档已注明 |
 | Hub 鉴权 / JWT / digest | ✅ 无 token 401、登录签发 JWT、blob 摘要写入时实算比对；弱校验未现 |
 | 敏感信息写日志 | ✅ 只记 PID/ID/错误；hub 令牌只落 0600 凭证文件，不打印 |
 
@@ -59,7 +59,7 @@
 
 | 严重度 | 位置 | 根因 | 修复 | commit |
 | --- | --- | --- | --- | --- |
-| 高 | internal/resource | cgroup v2 未在 boxli subtree_control enable cpu/memory/pids → 资源限制 EPERM 落空 | `enableControllers()` | `8f04018` |
+| 高 | internal/resource | cgroup v2 未在 licore subtree_control enable cpu/memory/pids → 资源限制 EPERM 落空 | `enableControllers()` | `8f04018` |
 | 高 | internal/runtime/exec | 纯 Go `setns(CLONE_NEWNS)` 进 mount ns 恒 EINVAL（Go #9091）| cgo fork 单线程子进程 setns+exec（可选组件）| `39ccd18` |
 | 高 | internal/runtime/init | `:ro` 卷单次 bind 只读被内核忽略 | bind 后再 remount MS_REMOUNT\|BIND\|RDONLY | `d241797` |
 | 中 | internal/store,engine | 并发同名 run 名字唯一性 TOCTOU + rm 泄漏名字锁 | O_EXCL 名字锁；rm 走 RemoveContainer 释放 | `649510d` |
@@ -74,7 +74,7 @@
 - `execns`（cgo）arm64 交叉编译需 arm64 C 工具链（CI 负责）；`-tags nocgo_exec`
   下 linux/amd64、linux/arm64、linux/386、linux/arm、linux/riscv64、darwin（amd64/arm64）、
   android/arm64 均可编。`android/amd64`、`android/arm` 受 Go 工具链限制必须启用 cgo 外部链接，非本仓库缺陷。
-- capabilities 剥离：boxli 非 OCI，不实现 cap drop（文档声明）。
+- capabilities 剥离：licore 非 OCI，不实现 cap drop（文档声明）。
 
 ## 6. 验证
 
@@ -86,9 +86,9 @@
   linux/arm、linux/riscv64、darwin/amd64、darwin/arm64、android/arm64）全部通过。
   `android/amd64` 需 cgo 外部链接（Go 工具链限制，非本仓库缺陷），
   `cgo linux/arm64` 需 arm64 C 工具链。
-- 真机复验（root，独立 `BOXLI_HOME`）：`memory.max=67108864`、`cpu.max=50000 100000`、
+- 真机复验（root，独立 `LICORE_HOME`）：`memory.max=67108864`、`cpu.max=50000 100000`、
   `pids.max=32` 实际写入生效；`exec` 报告容器 hostname（证明 setns 成功）；
   并发 3 次同名 `run` 恰好 1 个成功、2 个被拒且名字锁在 `rm` 后释放；
-  `:ro` 卷写入被 DENIED。复验后宿主无 boxli 残留（无 nft 表 / 无 veth / 无网桥），
+  `:ro` 卷写入被 DENIED。复验后宿主无 licore 残留（无 nft 表 / 无 veth / 无网桥），
   Docker 的 3 个容器与 `ip_forward` 未受影响。
 - 真机 A–J：见 test-report-v0.6.0.md。

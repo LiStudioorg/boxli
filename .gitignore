@@ -1,5 +1,5 @@
 # Binaries:
-/boxli
+/licore
 /bin/
 /dist/
 *.exe
@@ -26,7 +26,7 @@ Thumbs.db
 
 # Local runtime data (images, container state, logs)
 .data/
-*.boxli
+*.licore
 
 # Sandbox-local Go caches (GOCACHE/GOMODCACHE/GOPATH redirected into repo when HOME is read-only)
 .gocache/

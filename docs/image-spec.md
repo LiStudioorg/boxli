@@ -1,18 +1,18 @@
-# Boxli 镜像格式规范（.boxli）
+# LiCore 镜像格式规范（.licore）
 
-版本：`boxli/image-spec v1`（草案）
+版本：`licore/image-spec v1`（草案）
 状态：阶段 1 定义中
-适用范围：Boxli 引擎、`boxli hub` 构建与分发工具链
+适用范围：LiCore 引擎、`licore hub` 构建与分发工具链
 
 > ⚠️ 本规范与 Docker / OCI Image Spec **没有任何兼容关系**，也不计划建立映射。
-> 任何"把 OCI 镜像转成 .boxli"或反向的设计提案一律不进入 Boxli 仓库。
+> 任何"把 OCI 镜像转成 .licore"或反向的设计提案一律不进入 LiCore 仓库。
 
 ## 1. 总览
 
-一个 `.boxli` 文件是一个**未压缩的 POSIX tar 归档**，文件名以 `.boxli` 结尾，内部布局如下：
+一个 `.licore` 文件是一个**未压缩的 POSIX tar 归档**，文件名以 `.licore` 结尾，内部布局如下：
 
 ```text
-myapp-1.0.boxli (tar)
+myapp-1.0.licore (tar)
 ├── index.json          # 唯一入口：镜像清单（UTF-8 JSON，必须位于归档中）
 ├── layers/
 │   ├── 000001.base.tar.gz
@@ -24,7 +24,7 @@ myapp-1.0.boxli (tar)
 
 设计原则：
 
-1. **单一文件即完整镜像**：拉取、拷贝、校验都针对一个 `.boxli` 文件，没有多文件目录约定。
+1. **单一文件即完整镜像**：拉取、拷贝、校验都针对一个 `.licore` 文件，没有多文件目录约定。
 2. **外层 tar 不压缩**：层本身已经是 gzip，外层再压缩只会让流式解析和随机读取变复杂。
 3. **index.json 是唯一元数据源**：任何字段缺失都视为镜像损坏，绝不"尽力猜测"。
 
@@ -50,8 +50,8 @@ UTF-8 JSON，无 BOM，允许任意空白，解析器必须容忍键序。Schema
 
 ```json
 {
-  "mediaType": "application/x.boxli.manifest+json",
-  "specVersion": "boxli/image-spec/v1",
+  "mediaType": "application/x.licore.manifest+json",
+  "specVersion": "licore/image-spec/v1",
   "schemaVersion": 1,
   "architecture": "arm64",
   "os": "linux",
@@ -77,7 +77,7 @@ UTF-8 JSON，无 BOM，允许任意空白，解析器必须容忍键序。Schema
     }
   ],
   "annotations": {
-    "org.boxli.build.tool": "boxli-hub/0.3.0"
+    "org.licore.build.tool": "licore-hub/0.3.0"
   }
 }
 ```
@@ -86,8 +86,8 @@ UTF-8 JSON，无 BOM，允许任意空白，解析器必须容忍键序。Schema
 
 | 字段 | 类型 | 必填 | 约束 |
 | --- | --- | --- | --- |
-| `mediaType` | string | ✅ | 固定 `application/x.boxli.manifest+json`，不匹配即拒绝 |
-| `specVersion` | string | ✅ | 固定 `boxli/image-spec/v1`；未来仅允许递增此值做不兼容升级 |
+| `mediaType` | string | ✅ | 固定 `application/x.licore.manifest+json`，不匹配即拒绝 |
+| `specVersion` | string | ✅ | 固定 `licore/image-spec/v1`；未来仅允许递增此值做不兼容升级 |
 | `schemaVersion` | int | ✅ | 当前固定 `1` |
 | `architecture` | string | ✅ | `amd64` / `arm64` / `386` / `riscv64` / `loong64`（与 `GOARCH` 对齐） |
 | `os` | string | ✅ | `linux` / `android` / `darwin`（与 `GOOS` 对齐；android 视为 linux 的发行形态，由镜像自述） |
@@ -100,17 +100,17 @@ UTF-8 JSON，无 BOM，允许任意空白，解析器必须容忍键序。Schema
 | `layers[].digest` | string | ✅ | 见 3.2 |
 | `layers[].sizeBytes` | int | ✅ | 归档内该条目的未压缩字节数，必须与 tar 头一致 |
 | `layers[].applyOrder` | int | ✅ | 合并顺序，从 1 严格递增 |
-| `annotations` | object | ❌ | `map[string]string`，仅 `org.boxli.*` / 项目自有前缀 |
+| `annotations` | object | ❌ | `map[string]string`，仅 `org.licore.*` / 项目自有前缀 |
 
 ### 3.2 digest
 
 - 格式：`sha256:<64位小写hex>`。当前只允许 `sha256`，新增算法须先修订本规范。
 - 摘要对象：`layers[].digest` = 对应 tar.gz **原始字节**的 SHA-256；`config.digest` = config 对象序列化后字节的 SHA-256。
-- 校验时机：`boxli pull` 落地时全量校验；`boxli run` 启动前只重算 config 与层头 4 KiB 抽样（信任 storage 层记录的校验态）。
+- 校验时机：`licore pull` 落地时全量校验；`licore run` 启动前只重算 config 与层头 4 KiB 抽样（信任 storage 层记录的校验态）。
 
 ### 3.3 config 对象
 
-`config` 指向一个小 JSON 对象（≤ 64 KiB），存放容器运行配置，字段与 `boxli run` 的参数一一对应，配置文件族沿用 YAML 风格的键名：
+`config` 指向一个小 JSON 对象（≤ 64 KiB），存放容器运行配置，字段与 `licore run` 的参数一一对应，配置文件族沿用 YAML 风格的键名：
 
 ```json
 {
@@ -121,7 +121,7 @@ UTF-8 JSON，无 BOM，允许任意空白，解析器必须容忍键序。Schema
   "user": "1000:1000",
   "expose": ["8080/tcp"],
   "volumes": ["/var/lib/myapp"],
-  "labels": {"org.boxli.maintainer": "alice"}
+  "labels": {"org.licore.maintainer": "alice"}
 }
 ```
 
@@ -143,11 +143,11 @@ UTF-8 JSON，无 BOM，允许任意空白，解析器必须容忍键序。Schema
 ## 5. 存储布局（本地）
 
 ```text
-~/.boxli/
+~/.licore/
 ├── config.yaml
 ├── images/
 │   └── <name>/<version>/
-│       ├── source.boxli        # 原始 .boxli 文件
+│       ├── source.licore        # 原始 .licore 文件
 │       ├── index.json          # 解析出的清单（source of truth 的展开副本）
 │       └── state.json          # 校验状态：全部层 OK/损坏、拉取时间
 └── layers/
@@ -156,15 +156,15 @@ UTF-8 JSON，无 BOM，允许任意空白，解析器必须容忍键序。Schema
         └── meta.json
 ```
 
-去重规则：层以 digest 寻址，跨镜像共享；删除镜像只减引用计数，引用清零后由 `boxli images prune` 清理（阶段 2）。
+去重规则：层以 digest 寻址，跨镜像共享；删除镜像只减引用计数，引用清零后由 `licore images prune` 清理（阶段 2）。
 
 ## 6. 与工具链的关系
 
-- `boxli pull <file>.boxli`：本地文件 → 校验 → 落地 `~/.boxli/images`（阶段 1 已支持）
-- `boxli hub pack`（未实现）：目录 → 分层 → 生成 `index.json` → 输出 `.boxli`
-- 分发（阶段 2+）：`hub.boxli.dev` 自研极简 registry，tag → `.boxli` 文件 + `index.json` 摘要接口，不提供任何 Docker Distribution API 兼容层。
+- `licore pull <file>.licore`：本地文件 → 校验 → 落地 `~/.licore/images`（阶段 1 已支持）
+- `licore hub pack`（未实现）：目录 → 分层 → 生成 `index.json` → 输出 `.licore`
+- 分发（阶段 2+）：`hub.licore.dev` 自研极简 registry，tag → `.licore` 文件 + `index.json` 摘要接口，不提供任何 Docker Distribution API 兼容层。
 
 ## 7. 版本演进策略
 
-- 不兼容变更：只允许通过 `specVersion` 升级（如 `boxli/image-spec/v2`），旧引擎必须明确拒绝。
+- 不兼容变更：只允许通过 `specVersion` 升级（如 `licore/image-spec/v2`），旧引擎必须明确拒绝。
 - 兼容变更：新增可选 `annotations` 键、新增 `os`/`architecture` 枚举值，旧引擎按未知值告警跳过。

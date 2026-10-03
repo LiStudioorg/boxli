@@ -1,4 +1,4 @@
-# Boxli v0.5.0 审计报告
+# LiCore v0.5.0 审计报告
 
 记录从 v0.4.0 到 v0.5.0 对"半成品"的全面扫描、补齐情况、剩下未实现项与环境限制。
 
@@ -6,7 +6,7 @@
 
 | # | 半成品 | 处置 |
 | --- | --- | --- |
-| 1 | `boxli build` 只输出计划，未调 `build.Build()` | ✅ **完成**：真正构建并自动导入 store（`-t/--tag`、`-f/--file`、上下文、`FROM scratch`） |
+| 1 | `licore build` 只输出计划，未调 `build.Build()` | ✅ **完成**：真正构建并自动导入 store（`-t/--tag`、`-f/--file`、上下文、`FROM scratch`） |
 | 2 | `compose up` 打印"编排计划"不创建容器 | ✅ **完成**：经 `engine.Run` 真实创建（boxfile/build 服务就地构建导入；image 服务直接运行） |
 | 3 | `compose scale` 输出目标副本数不改实际 | ✅ **完成**：按目标增启/缩容副本 |
 | 4 | `--storage` 配额：`resource.writeStorageAndDevices` 空实现 | ✅ **转为显式拒绝**（user 请求时返回 ErrUnsupported） |
@@ -15,7 +15,7 @@
 | 7 | `-p` 在 host/none 网络"警告后忽略" | ✅ **转为显式错误** |
 | 8 | `engine.go` / `devrun.go` 陈旧"阶段 3 占位 / run 尚未实现"注释 | ✅ **更新** |
 | 9 | `resource info / update` 广告未实现的 `--storage/--gpu/--npu/--bandwidth` | ✅ **改为只列已实现项；update 移除未实现 flag** |
-| 10 | `boxli build/test 无缓存/精简` 语义未兑现 | `--no-cache`/`--slim` 保留为明确提示的 no-op（构建本就每次重打追加层，无缓存）；已注释说明 |
+| 10 | `licore build/test 无缓存/精简` 语义未兑现 | `--no-cache`/`--slim` 保留为明确提示的 no-op（构建本就每次重打追加层，无缓存）；已注释说明 |
 
 ## 2. 仍未实现（明确返回错误 / 未来阶段，不做伪装）
 
@@ -57,6 +57,6 @@
 
 - 特权路径（veth、cgroup 写、setns exec、容器 fork）必须在 root 环境验证；
   本次开发环境为非 root 沙箱，无法代为执行容器 e2e。
-- 自动化沙箱：系统使用 `/tmp/boxli-*` 与 `$PWD/.?gocache` 隔离构建缓存，
+- 自动化沙箱：系统使用 `/tmp/licore-*` 与 `$PWD/.?gocache` 隔离构建缓存，
   仓库内 `.gopath/.gocache/.modcache` 为沙箱遗留（已 gitignore，不提交）。
 - `--gpu/npu/bandwidth/storage`、`RUN/ADD`、`s3` 属未来阶段，当前显式报错。

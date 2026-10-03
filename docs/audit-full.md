@@ -1,4 +1,4 @@
-# Boxli 全面审计（audit-full）
+# LiCore 全面审计（audit-full）
 
 本报告汇总在非 root 沙箱中完成的静态审计、安全审计、并发/错误注入测试与
 覆盖率情况，以及由此修复的 bug。
@@ -101,7 +101,7 @@ commit `1cadc97`；配套测试（mock socket、AF_UNIX socketpair）：
 ### fix(netlink): LinkUp/LinkDown hit the nlmsghdr seq, not ifinfomsg (EAGAIN)
 
 **现象**：root 真机上 `CAP_NET_ADMIN` 有效、二进制也已重编最新，但
-`上线网桥 boxli0: rtnetlink add-link 等待应答超时 ... resource temporarily
+`上线网桥 licore0: rtnetlink add-link 等待应答超时 ... resource temporarily
 unavailable` 仍复现。
 
 **根因**：`setIFFBuf` 把 `IFF_UP` 写进了 `buf[8:12]/[12:16]`——那是
@@ -119,9 +119,9 @@ commit `779cbf5`
 ### fix(netlink): SetLinkMaster enslaved the bridge to itself (EBUSY)
 
 **现象**：修掉 setIFFBuf 后 veth 走到 SetLinkMaster 仍失败，新错误
-`挂接网桥侧 veth 到 boxli0: rtnetlink add-link: device or resource busy`。
+`挂接网桥侧 veth 到 licore0: rtnetlink add-link: device or resource busy`。
 
-**根因**：`SetLinkMaster(name, master)` 把 `LinkByName(master)`（网桥 boxli0）
+**根因**：`SetLinkMaster(name, master)` 把 `LinkByName(master)`（网桥 licore0）
 的 ifindex 放进了 RTM_NEWLINK 的 `ifinfomsg.ifindex`，即把请求主体误设成了
 **网桥**，再叠加 `IFLA_MASTER=网桥` —— 变成"把网桥挂到网桥自己" → EBUSY。
 RTM_NEWLINK 主体必须是被挂接的链路（hostVeth），`IFLA_MASTER` 才指向网桥。
@@ -181,9 +181,9 @@ resolv.conf/hosts 前未建 /etc。这也连锁导致此前 curl 空、exec 的 
 **现象**：容器 Up 存活、DNAT 单条、ip_forward=1，但 curl 仍空；live 探针显示
 `ip route get 172.18.0.2 → dev br-03c9198c2214`（一个 Docker 网桥也用了
 172.18.0.0/16），到容器流量进了 docker 的网桥 → No route to host。**根因是
-boxli0 硬编码 172.18.0.0/16 与宿主 Docker 网络同网段冲突**，不是包路径 bug。
+licore0 硬编码 172.18.0.0/16 与宿主 Docker 网络同网段冲突**，不是包路径 bug。
 
 **修复**：`pickFreeSubnet` 优先 172.18.0.0/16；若 `/proc/net/route` 已被其他
-非 boxli 接口占用，则从 172.20..172.31.0.0/16 选首个空闲（网关 *.1）。
+非 licore 接口占用，则从 172.20..172.31.0.0/16 选首个空闲（网关 *.1）。
 `ensurePreset` 用它；verify-root.sh 清理时删旧网络定义使重新可选，
 直连 IP 探针不再硬编码 172.18。commit `c6c1fc6`

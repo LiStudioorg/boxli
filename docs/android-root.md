@@ -1,10 +1,10 @@
-# Android（有 Root）运行 Boxli
+# Android（有 Root）运行 LiCore
 
-本文档说明 Boxli 在 **有 Root 的 Android 设备**上的支持范围、运行时适配细节、
+本文档说明 LiCore 在 **有 Root 的 Android 设备**上的支持范围、运行时适配细节、
 已知限制与排查方法。
 
 > 无 Root 的 Android **官方不支持**：缺少 namespace / cgroup / setns 等内核隔离
-> 能力，任何用户态方案（含 proot）都无法提供真正的隔离。Boxli 不检测 proot、
+> 能力，任何用户态方案（含 proot）都无法提供真正的隔离。LiCore 不检测 proot、
 > 不集成 Termux、不引导提权。详见 [AGENTS.md](../AGENTS.md) 的《Android 支持策略》。
 
 ---
@@ -21,7 +21,7 @@ Android 有 Root 走与 Linux 服务器相同的 `native_linux` 后端：namespa
 | cgroup 资源限制 | ✅ | 优先 cgroup v2，设备只有 v1（或 v1/v2 混合）时自动走 v1 |
 | 网络（veth + NAT） | ✅ | 同 Linux |
 | 卷 / `:ro` / 匿名卷 | ✅ | 同 Linux |
-| `boxli exec`（含 `-it`） | ✅ | 走 cgo 组件 `internal/execns`；**纯 Go 构建下 exec 不可用**，见 3.2 |
+| `licore exec`（含 `-it`） | ✅ | 走 cgo 组件 `internal/execns`；**纯 Go 构建下 exec 不可用**，见 3.2 |
 | 开机自启 | ❌ 未实现 | 设计为 Magisk `service.d`，`internal/service` 的 Android 后端尚未落地（见第 8 节） |
 | SELinux | ⚠️ 见第 2 节 | enforcing 设备上存在策略限制，无法完全消除 |
 
@@ -29,64 +29,64 @@ Android 有 Root 走与 Linux 服务器相同的 `native_linux` 后端：namespa
 
 ## 2. 真机安装步骤
 
-前提：设备已 Root（Magisk / KernelSU），内核开启 `CONFIG_NAMESPACES`（出厂 Android 10+ 的 GKI 内核普遍满足；`uname -r` 确认内核版本，`boxli doctor` 的 `kernel.namespaces` 项给出最终判定）。
+前提：设备已 Root（Magisk / KernelSU），内核开启 `CONFIG_NAMESPACES`（出厂 Android 10+ 的 GKI 内核普遍满足；`uname -r` 确认内核版本，`licore doctor` 的 `kernel.namespaces` 项给出最终判定）。
 
 **① 交叉编译二进制**（开发机执行）：
 
 ```bash
-cd boxli
-CGO_ENABLED=0 GOOS=android GOARCH=arm64 go build -o boxli-android-arm64 .
-# ⚠️ 纯 Go 构建没有 `boxli exec`（setns 进挂载命名空间必须 cgo，见 3.2）。
+cd licore
+CGO_ENABLED=0 GOOS=android GOARCH=arm64 go build -o licore-android-arm64 .
+# ⚠️ 纯 Go 构建没有 `licore exec`（setns 进挂载命名空间必须 cgo，见 3.2）。
 # 需要 exec 时在 NDK 环境交叉编译：
 CGO_ENABLED=1 GOOS=android GOARCH=arm64 \
   CC=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang \
-  go build -o boxli-android-arm64 .
+  go build -o licore-android-arm64 .
 ```
 
 **② 推送到设备**：
 
 ```bash
-adb push boxli-android-arm64 /data/local/tmp/boxli
-adb shell su -c 'cp /data/local/tmp/boxli /data/local/bin/boxli; chmod 0755 /data/local/bin/boxli'
+adb push licore-android-arm64 /data/local/tmp/licore
+adb shell su -c 'cp /data/local/tmp/licore /data/local/bin/licore; chmod 0755 /data/local/bin/licore'
 ```
 
 > SELinux 提示：`/data/local/tmp` 与 `/data/local/bin` 的执行域受设备策略约束，
-> 被拦时先按第 4.5 节查 `avc` 拒绝记录再调整安装位置/标签，Boxli 不会（也不能）
+> 被拦时先按第 4.5 节查 `avc` 拒绝记录再调整安装位置/标签，LiCore 不会（也不能）
 > 替你改策略。
 
 **③ 环境自检**：
 
 ```bash
-adb shell su -c '/data/local/bin/boxli doctor'
+adb shell su -c '/data/local/bin/licore doctor'
 # 关注 kernel.version / kernel.namespaces / cgroups.mount / cgroups.controllers 四项，
 # 以及末尾的 android.env 专项（Android 版本/型号、root、cgroup 形态、SELinux、
 # namespace 矩阵、userns），缺失能力会给出排查建议。逐项含义见 android-verify.md 第 2 节。
 ```
 
-**④ 数据目录**：root 默认为 `/root/.boxli`，Android 上建议显式指定（`/data/local/tmp` 带 `nosuid` 且可能被清理）：
+**④ 数据目录**：root 默认为 `/root/.licore`，Android 上建议显式指定（`/data/local/tmp` 带 `nosuid` 且可能被清理）：
 
 ```bash
-adb shell su -c 'BOXLI_HOME=/data/boxli /data/local/bin/boxli pull ./demo_v1.boxli'
+adb shell su -c 'LICORE_HOME=/data/licore /data/local/bin/licore pull ./demo_v1.licore'
 ```
 
 **⑤ 跑第一个容器**：
 
 ```bash
-adb shell su -c 'BOXLI_HOME=/data/boxli /data/local/bin/boxli run -d --name demo --memory 64m demo:v1'
-adb shell su -c 'BOXLI_HOME=/data/boxli /data/local/bin/boxli ps'
+adb shell su -c 'LICORE_HOME=/data/licore /data/local/bin/licore run -d --name demo --memory 64m demo:v1'
+adb shell su -c 'LICORE_HOME=/data/licore /data/local/bin/licore ps'
 ```
 
 逐项验收（每条命令带期望输出）见 [android-verify.md](android-verify.md)。
 
-> **开机自启**：当前版本 `boxli boot enable` 只生成 Linux systemd unit，
+> **开机自启**：当前版本 `licore boot enable` 只生成 Linux systemd unit，
 > Magisk `service.d` 后端未实现（第 8 节）。临时替代——自行创建
-> `/data/adb/service.d/boxli.sh`（`chmod 0755`）：
+> `/data/adb/service.d/licore.sh`（`chmod 0755`）：
 >
 > ```sh
 > #!/system/bin/sh
 > sleep 20          # 等 data 分区与网络就绪
-> export BOXLI_HOME=/data/boxli
-> /data/local/bin/boxli boot
+> export LICORE_HOME=/data/licore
+> /data/local/bin/licore boot
 > ```
 
 ---
@@ -95,9 +95,9 @@ adb shell su -c 'BOXLI_HOME=/data/boxli /data/local/bin/boxli ps'
 
 ### 3.1 矩阵
 
-每个命名空间**是否需要 root**、**Android 上的可用性**、**缺失时 Boxli 的行为**：
+每个命名空间**是否需要 root**、**Android 上的可用性**、**缺失时 LiCore 的行为**：
 
-| 命名空间 | 需要 CAP_SYS_ADMIN | Android 典型可用性 | 缺失时 Boxli 行为 |
+| 命名空间 | 需要 CAP_SYS_ADMIN | Android 典型可用性 | 缺失时 LiCore 行为 |
 | --- | --- | --- | --- |
 | `pid` | 是（或 userns 内） | ✅ 内核标配 | **硬失败** `ErrNoNamespaces`：没有 pid ns 谈不上容器 |
 | `mnt` | 是（或 userns 内） | ✅ 内核标配 | 同上，硬失败 |
@@ -118,7 +118,7 @@ stub（AGPL 头注释与 AGENTS.md 均登记了这唯一 CGO 例外）：
 | 功能 | cgo 构建 | 纯 Go / nocgo_exec 构建 |
 | --- | --- | --- |
 | 容器创建/运行/停止/资源限制 | ✅ | ✅ |
-| `boxli exec` 进入容器 | ✅ | ❌ 返回 `ErrNoCgoExec`（不是"部分可用"，是明确拒绝） |
+| `licore exec` 进入容器 | ✅ | ❌ 返回 `ErrNoCgoExec`（不是"部分可用"，是明确拒绝） |
 
 原因：进入容器**挂载**命名空间必须 `setns(CLONE_NEWNS)`，纯 Go 无法安全调用
 （线程会在 syscall 间迁移，Go issue #9091）。这不是 Android 特有限制，Linux 服务器相同。
@@ -136,11 +136,11 @@ stub（AGPL 头注释与 AGENTS.md 均登记了这唯一 CGO 例外）：
 root 下加 `CLONE_NEWUSER` 反而是**负优化**：容器 root 会被映射成宿主普通 uid，
 凭空失去挂载、改网络、写 cgroup 的能力——为了解决"没有 root"的问题而制造
 "root 不够用"的问题。Android 设备上多数 ROM 干脆禁用了非特权 userns，这不影响
-root 路线，Boxli 因此把它处理为 Debug 而不是警告（回归测试
+root 路线，LiCore 因此把它处理为 Debug 而不是警告（回归测试
 `TestPlanNamespacesRootNoUserNSIsNotDegraded` 锁定该语义：root+无 userns 组合
 **必须**既不报错也不标记 Degraded）。
 
-"降级（Degraded）"在 Boxli 里只有一个触发条件：**隔离确实变弱了**（bridge
+"降级（Degraded）"在 LiCore 里只有一个触发条件：**隔离确实变弱了**（bridge
 网络下 `net` 命名空间缺失）。它与"能力探测结果不同"是两回事。
 
 ---
@@ -150,7 +150,7 @@ root 路线，Boxli 因此把它处理为 Debug 而不是警告（回归测试
 
 绝大多数 Android 设备默认 **enforcing**，这是与 Linux 服务器最主要的差异来源。
 
-### 4.1 Boxli 做了什么
+### 4.1 LiCore 做了什么
 
 容器 init 进程在 `execve` 用户命令**之前**，继承引擎自身的 exec 过渡上下文：
 
@@ -163,7 +163,7 @@ root 路线，Boxli 因此把它处理为 Debug 而不是警告（回归测试
 - **容器上下文与引擎保持一致**。这样"引擎能访问的东西容器也能访问"，不会因为
   放宽标签而扩大攻击面，也不需要在设备上预置任何策略。
 - **绝不调用 `setenforce`**，绝不修改 `/sys/fs/selinux/*`，绝不动全局策略或
-  SELinux 运行状态。Boxli 只读写自身进程的 `attr/exec`。
+  SELinux 运行状态。LiCore 只读写自身进程的 `attr/exec`。
   > 这条约束由单元测试 `TestSELinuxNoGlobalStateChange` 静态守护：源码中一旦出现
   > `setenforce` / `/sys/fs/selinux` 等字样，测试立即失败。
 - **不做"假装成功"**：写不进去就明确告警，不会静默吞掉。
@@ -179,7 +179,7 @@ root 路线，Boxli 因此把它处理为 Debug 而不是警告（回归测试
 
 ### 4.3 三种状态下的行为
 
-| 设备 SELinux 状态 | Boxli 行为 | 日志 |
+| 设备 SELinux 状态 | LiCore 行为 | 日志 |
 | --- | --- | --- |
 | **disabled**（`selinuxfs` 未挂载） | 直接跳过 | Debug 级，无噪音 |
 | **permissive**（只记录不拦截） | 尝试继承上下文；失败仅告警 | 失败时 Warn |
@@ -197,9 +197,9 @@ root 路线，Boxli 因此把它处理为 Debug 而不是警告（回归测试
 
 ### 4.4 enforcing 设备上的已知限制
 
-Boxli **不修改策略、不放宽标签**，因此下面这些情况必然存在：
+LiCore **不修改策略、不放宽标签**，因此下面这些情况必然存在：
 
-1. **`boxli` 二进制自身的域受限**。若 `boxli` 运行在受限域（如从 `/data/local/tmp`
+1. **`licore` 二进制自身的域受限**。若 `licore` 运行在受限域（如从 `/data/local/tmp`
    执行、被 Magisk 域约束），引擎本身可能无法挂载、建 cgroup 或 `setns`。
    表现为创建容器时 `EPERM`。
 
@@ -218,14 +218,14 @@ Boxli **不修改策略、不放宽标签**，因此下面这些情况必然存�
 ```bash
 getenforce                     # Enforcing / Permissive / Disabled
 cat /sys/fs/selinux/enforce    # 1=enforcing, 0=permissive
-ls -Z /data/local/tmp/boxli    # 看 boxli 自身的标签
+ls -Z /data/local/tmp/licore    # 看 licore 自身的标签
 id -Z                          # 当前 shell 的上下文
 ```
 
-**第二步：用 Boxli 自检**
+**第二步：用 LiCore 自检**
 
 ```bash
-boxli doctor          # 含 Android 环境探测：SELinux 状态、cgroup 形态、
+licore doctor          # 含 Android 环境探测：SELinux 状态、cgroup 形态、
                       # namespace 可用性、user namespace 支持
 ```
 
@@ -239,7 +239,7 @@ WARN 设置 SELinux exec 上下文失败，容器将继续启动；若系统处�
 ```
 
 说明上下文继承没成功，容器已用内核默认标签启动。此时容器内遇到的
-`EACCES`／`Permission denied` 基本都可以归因到标签不匹配，而不是 Boxli 的缺陷。
+`EACCES`／`Permission denied` 基本都可以归因到标签不匹配，而不是 LiCore 的缺陷。
 
 **第四步：定位是哪一步被拦**
 
@@ -251,12 +251,12 @@ logcat | grep -i avc | tail -20
 # avc 记录会给出 scontext（谁）、tcontext（访问谁）、tclass 与被拒的权限
 ```
 
-**第五步：可选缓解（由用户自行决定，Boxli 不代劳）**
+**第五步：可选缓解（由用户自行决定，LiCore 不代劳）**
 
-- 把 `boxli` 放到标签更宽松的位置执行；
+- 把 `licore` 放到标签更宽松的位置执行；
 - 由用户自行编写并加载针对性的策略模块（需要设备端 SELinux 工具链）；
 - 仅在测试设备上临时 `setenforce 0` 验证"是否为 SELinux 导致"。
-  > ⚠️ **Boxli 自身永远不会执行此操作**，也不会建议在生产设备上这样做。
+  > ⚠️ **LiCore 自身永远不会执行此操作**，也不会建议在生产设备上这样做。
   > 关闭 enforcing 会显著降低设备安全性。
 
 ### 4.6 本项目的验证边界
@@ -277,7 +277,7 @@ SELinux 的**上下文继承路径**有完整单元测试覆盖（读取、写�
 
 Android 设备的 cgroup 形态比 Linux 服务器更分散：
 
-| 形态 | 探测方式 | Boxli 行为 |
+| 形态 | 探测方式 | LiCore 行为 |
 | --- | --- | --- |
 | cgroup v2 | `/sys/fs/cgroup/cgroup.controllers` 存在 | 优先使用 |
 | cgroup v1 | 各控制器分别挂载（`memory/`、`cpu/`、`pids/`…） | v2 不可用时自动回退 |
@@ -298,17 +298,17 @@ Android 设备的 cgroup 形态比 Linux 服务器更分散：
 - v1 的 `cpu.shares` 就是 `--cpu-shares` 的原始语义 `[2,262144]`，与 v2 的
   `cpu.weight` 量纲不同，**不能**做换算。
 - CPU 用量的位置也不同：v1 在 **cpuacct** 控制器（`cpuacct.usage`，单位纳秒），
-  v2 在 `cpu.stat` 的 `usage_usec`（微秒）。`boxli stats` 已各自适配。
+  v2 在 `cpu.stat` 的 `usage_usec`（微秒）。`licore stats` 已各自适配。
 
-**组布局**（`boxli rm` / 排查时按此找）：
+**组布局**（`licore rm` / 排查时按此找）：
 
 ```text
-v2： /sys/fs/cgroup/boxli/<容器ID>/            # 统一层级一个目录
-v1： /sys/fs/cgroup/memory/boxli/<容器ID>/     # 每个已挂载控制器一个
-     /sys/fs/cgroup/cpu/boxli/<容器ID>/  …
+v2： /sys/fs/cgroup/licore/<容器ID>/            # 统一层级一个目录
+v1： /sys/fs/cgroup/memory/licore/<容器ID>/     # 每个已挂载控制器一个
+     /sys/fs/cgroup/cpu/licore/<容器ID>/  …
 ```
 
-Boxli 会在 v2 的**父组** `/sys/fs/cgroup/boxli` 上开启
+LiCore 会在 v2 的**父组** `/sys/fs/cgroup/licore` 上开启
 `cgroup.subtree_control`（`cpu memory pids`）——不开启时子组的限额文件
 根本不可写，这是 Android 定制内核上最容易踩的一处。
 
@@ -332,7 +332,7 @@ Android 的 `binder` / `ashmem` / `kgsl` 等平台专有节点暴露给容器，
 | 内容 | 实现 |
 | --- | --- |
 | `null` `zero` `full` `random` `urandom` `tty` `ptmx` | 按需从宿主 bind 单个节点 |
-| `/dev/shm` | 独立 tmpfs，默认 64 MiB；`BOXLI_SHM_SIZE` 可调整（支持 `16m`/`512k`/`1g` 后缀，非法值告警后回退默认） |
+| `/dev/shm` | 独立 tmpfs，默认 64 MiB；`LICORE_SHM_SIZE` 可调整（支持 `16m`/`512k`/`1g` 后缀，非法值告警后回退默认） |
 | `/dev/pts` | devpts 实例（`exec -it` 依赖） |
 | `/dev/fd` `stdin` `stdout` `stderr` | 指向 `/proc/self/fd` 的符号链接 |
 
@@ -342,7 +342,7 @@ Android 的 `binder` / `ashmem` / `kgsl` 等平台专有节点暴露给容器，
 
 部分 Android 设备默认 `hidepid=2`，会让容器内 `ps` 看不到自己的进程。
 
-Boxli 先解析**宿主** `/proc/self/mountinfo` 判断现状：
+LiCore 先解析**宿主** `/proc/self/mountinfo` 判断现状：
 
 | 宿主 `hidepid` | 容器挂载参数 |
 | --- | --- |
@@ -364,7 +364,7 @@ Boxli 先解析**宿主** `/proc/self/mountinfo` 判断现状：
 | 限制 | 状态 | 说明 |
 | --- | --- | --- |
 | 无 Root 的 Android | **不支持** | 官方策略，见开头 |
-| enforcing 下的策略拦截 | **无法消除** | Boxli 不改策略；见第 4.4 节 |
+| enforcing 下的策略拦截 | **无法消除** | LiCore 不改策略；见第 4.4 节 |
 | enforcing 真机实测 | **未验证** | 无 SELinux 测试机；见第 4.6 节 |
 | 纯 Go（交叉编译）构建无 `exec` | **设计如此** | setns(CLONE_NEWNS) 必须 cgo；见 3.2 |
 | 开机自启（Magisk） | **未实现** | 手动 service.d 脚本可替代；见第 2 节与第 8 节 |
@@ -377,12 +377,12 @@ Boxli 先解析**宿主** `/proc/self/mountinfo` 判断现状：
 
 | 项 | 现状 | 计划 |
 | --- | --- | --- |
-| `boxli boot enable` 的 Magisk 后端 | 未实现（`internal/service` 仅有 systemd 后端；AGENTS.md 已登记设计） | 生成 `/data/adb/service.d/boxli.sh` |
-| `boxli version` 的 Android 平台标识 | 显示 `linux/arm64` 等原始 GOOS/GOARCH | 识别 Android 身份后追加 `android/arm64, root` |
+| `licore boot enable` 的 Magisk 后端 | 未实现（`internal/service` 仅有 systemd 后端；AGENTS.md 已登记设计） | 生成 `/data/adb/service.d/licore.sh` |
+| `licore version` 的 Android 平台标识 | 显示 `linux/arm64` 等原始 GOOS/GOARCH | 识别 Android 身份后追加 `android/arm64, root` |
 
 以上均为**已识别、未接线**状态；第 1 节矩阵中的 ✅ 不包含它们。
 
-已接线（曾在本节列出，保留对照）：`boxli doctor` 已渲染 **`android.env`** 专项检查项
+已接线（曾在本节列出，保留对照）：`licore doctor` 已渲染 **`android.env`** 专项检查项
 ——Android 身份/版本/API/型号、root 状态、cgroup 形态、SELinux 状态、namespace 能力矩阵、
 userns 可用性与降级提示；非 Android 平台折叠为一行 `[跳过]`，不影响既有输出。
 等级判定与检索建议见 [android-verify.md](android-verify.md) 第 2 节。
@@ -393,5 +393,5 @@ userns 可用性与降级提示；非 Android 平台折叠为一行 `[跳过]`�
 
 - [AGENTS.md](../AGENTS.md) — Android 支持策略与项目约定
 - [android-verify.md](android-verify.md) — Android 真机逐项验证手册（命令 + 期望输出 + 排查）
-- [verify-root.sh](verify-root.sh) — Linux root 真机验证脚本（A–J，boxli 全功能基线）
+- [verify-root.sh](verify-root.sh) — Linux root 真机验证脚本（A–J，licore 全功能基线）
 - [test-report-v0.6.0.md](test-report-v0.6.0.md) — 历史真机验收报告

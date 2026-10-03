@@ -1,4 +1,4 @@
-# Boxli v0.5.2 审计报告 —— veth netlink 创建失败 / ps Up 时序
+# LiCore v0.5.2 审计报告 —— veth netlink 创建失败 / ps Up 时序
 
 在 root 真机（Linux 5.15、cgroup v2）复验时发现两个新问题，本报告记录根因与修复。
 
@@ -7,8 +7,8 @@
 ### 现象
 
 ```
-boxli init: 配置容器网络失败: 容器侧 veth vpe0fb957f 未就绪（20 次重试后）: 链路不存在
-boxli shim: shim: 启动容器 0fb957f00f74 失败: 装配容器网络失败:
+licore init: 配置容器网络失败: 容器侧 veth vpe0fb957f 未就绪（20 次重试后）: 链路不存在
+licore shim: shim: 启动容器 0fb957f00f74 失败: 装配容器网络失败:
   创建 veth 对 veth0fb957f/vpe0fb957f: 接收 rtnetlink 响应: resource temporarily unavailable
 ```
 
@@ -54,7 +54,7 @@ peerHdr := append(ifInfoMsg(), cstr(peer)...)   // ifinfomsg + "vpe...\0"
 
 ### 现象
 
-`boxli run -d` 后立即 `ps` 显示 Up，但 shim 数秒后才检测到启动失败；init 没起来
+`licore run -d` 后立即 `ps` 显示 Up，但 shim 数秒后才检测到启动失败；init 没起来
 时 ps 却已显示 Up。
 
 ### 根因
@@ -69,7 +69,7 @@ detach 路径在 fork shim 的瞬间就写 `Running=true`，早于容器 init �
 - `run -d`（engine detach）写 `Status=starting, Running=false`（不再提前声称 running）。
 - shim：每次启动前写 `starting`；`OnStart`（init 存活）写 `running, Running=true`
   （ps 只有在此时才显示 Up）；init 退出或启动失败写 `exited, Running=false`。
-- `boxli ps`：`starting` 渲染为 `Starting`（明确标注，且默认视图也列出），不再与
+- `licore ps`：`starting` 渲染为 `Starting`（明确标注，且默认视图也列出），不再与
   genuine Up 混淆。
 
 ### 单元测试
@@ -92,12 +92,12 @@ detach 路径在 fork shim 的瞬间就写 `Running=true`，早于容器 init �
 ## 待 root 真机回归
 
 ```bash
-cd /root/boxli-test && boxli build -t demo:v1 . && boxli run -d -p 18080:80 demo:v1
-boxli ps -a
+cd /root/licore-test && licore build -t demo:v1 . && licore run -d -p 18080:80 demo:v1
+licore ps -a
 ps aux | grep hello
 curl -s http://localhost:18080
-boxli stop demo && boxli rm demo
+licore stop demo && licore rm demo
 ```
 
-期望：veth 创建成功（`ip link | grep veth`，master 为 boxli0）、进程存活、
+期望：veth 创建成功（`ip link | grep veth`，master 为 licore0）、进程存活、
 curl 返回 hello、stop/rm 秒退、无残留。

@@ -1,4 +1,4 @@
-# Boxli v0.5.1 审计报告 —— root 真机 6 个 bug 修复
+# LiCore v0.5.1 审计报告 —— root 真机 6 个 bug 修复
 
 在 root 真机（Linux 5.15、cgroup v2、root、nft）验证时发现 6 个 bug，本报告记录
 每个 bug 的根因、修复方式、单元测试与验证结果。修复 commit 用 `fix(<scope>)`
@@ -21,13 +21,13 @@
 
 ## Bug 2【高】nft 规则语法错误
 
-- **现象**：`nft replace rule ip boxli post_nat ip saddr ... masquerade` 报
+- **现象**：`nft replace rule ip licore post_nat ip saddr ... masquerade` 报
   `syntax error, unexpected ip, expecting handle`。
 - **根因**：`replace rule` 要求规则 handle，`replace rule ip ...` 形式非法；
   且该 `ip` 关键字在 replace 上下文解析失败。**已用 `nft` 解析验证**：
-  - `add rule ip boxli post_nat ip saddr ... masquerade` → 仅"Operation not
+  - `add rule ip licore post_nat ip saddr ... masquerade` → 仅"Operation not
     permitted"（权限），**无语法错**；
-  - `replace rule ip boxli post_nat ip saddr ...` → `syntax error, unexpected
+  - `replace rule ip licore post_nat ip saddr ...` → `syntax error, unexpected
     ip, expecting handle`（复现）。
 - **修复**：改为 `flush` + `add rule`（幂等 + 语法正确），见
   `internal/network/driver_linux.go` 的 `natMasqArgs`/`dnatRuleArgs`/
@@ -38,7 +38,7 @@
 ## Bug 3【中】网桥已存在时误报"未就绪"
 
 - **根因**：`netlink.LinkByName` 用内核返回的 `IFLA_IFNAME` **原始字节**（含尾
-  NUL 与对齐填充）与请求名比较，导致对已存在的接口（如 `boxli0`、`lo`）恒判
+  NUL 与对齐填充）与请求名比较，导致对已存在的接口（如 `licore0`、`lo`）恒判
   "链路不存在"→ `driverBootstrap` 误以为网桥缺失而重建 → `NewLink` 报
   `file exists`；并连锁破坏 veth（`SetLinkMaster`/`LinkUp` 找不到网桥）。
 - **修复**：新增 `trimAttrString`，比较前去掉属性尾 NUL/填充
@@ -67,7 +67,7 @@
 - **测试**：`TestRunMarksStoppedWhenInitExits`、`TestRunMarksStoppedWhenStartFails`
   用 fake StartWith 断言 Running=false 正确写回。
 
-## Bug 6【严重】boxli stop / rm 卡死，Ctrl+C 无效
+## Bug 6【严重】licore stop / rm 卡死，Ctrl+C 无效
 
 - **根因**：
   1. 共享 rtnetlink 套接字无接收超时 → 内核不回应时 `Recvfrom` 无限阻塞，

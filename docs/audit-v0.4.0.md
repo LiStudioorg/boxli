@@ -1,4 +1,4 @@
-# Boxli v0.4.0 审计报告
+# LiCore v0.4.0 审计报告
 
 本文档记录 v0.4.0 开发完成后的总检查 / 自动修复 / 测试结果。
 审计在 **非 root** 沙箱（UID 1000，landlock 限制）中进行，特权场景以
@@ -30,7 +30,7 @@ runbook 方式给出（见 `docs/e2e.md`）。
 | 高 | `internal/resource/cgroup_linux.go` `write()` | 用「临时文件 + rename」写 cgroups v2 控制文件（`memory.max` 等是内核伪文件，不支持 rename）→ 限制从不生效 | 改为整行直写（`os.WriteFile`）<br>commit `71a24df` |
 | 中 | `internal/engine/engine.go` `Run()` | 容器启动失败后仅删 rootfs，未撤回已建网络端点（veth/NAT）与 cgroup → 残留 | 失败路径 `disconnectContainer` + `resource.Remove`<br>commit `71a24df` |
 | 中 | 阶段 3 引入 | `wireNetwork`/`wireVolumes`/`resource.Setup` 在 `engine.Run` 返回后才执行，前台模式下容器已退出才接线 → veth 从未进 netns | 接线前移进 engine（1.1–1.3），见特性提交 |
-| 低 | `network` 缺省 | 缺省 `boxli0` 未预建时 `boxli run` 报“网络不存在” | 自动 `EnsurePreset` 补建 |
+| 低 | `network` 缺省 | 缺省 `licore0` 未预建时 `licore run` 报“网络不存在” | 自动 `EnsurePreset` 补建 |
 
 ## 3. 安全审计
 
@@ -75,7 +75,7 @@ internal/engine   67.9%
 
 ## 6. 端到端验证结果
 
-- **Hub（本环境可跑）**：`boxli hub serve` 启动 → `login` → `push` →
+- **Hub（本环境可跑）**：`licore hub serve` 启动 → `login` → `push` →
   `search` 命中 → `pull` 下载并走本地导入。✅
 - **容器网络/卷/资源/exec（本环境需 root）**：runbook 见 `docs/e2e.md`，
   覆盖 veth 进 netns、-p NAT 绑定容器 IP、-v 绑定/匿名卷、--memory 等
