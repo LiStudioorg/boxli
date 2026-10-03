@@ -6,6 +6,7 @@ package dev
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -84,6 +85,85 @@ func assertNoBatch(t *testing.T, ch <-chan Batch, what string) {
 		}
 		t.Fatalf("%s: unexpected extra batch %v", what, b.Paths)
 	case <-time.After(settleBudget):
+	}
+}
+
+// settleBudget 之上再加一个"等待基线就绪"的上限。基线就绪正常情况下
+// 只需一个轮询周期（testInterval），这里给足余量以保证高负载下也不过早失败。
+const baselineBudget = 5 * time.Second
+
+// awaitBaseline 阻塞到"Watcher 已完成首次轮询、基线确立且循环确实活着"
+// 为止，替代过去那句 `time.Sleep(2 * testInterval)`。
+//
+// 过去用固定 sleep 等基线是测试里最脆的一处：sleep 从 Run 返回后开始计时，
+// 但 loop goroutine 可能尚未被调度、ticker 也还没启动，两个时间轴一错开，
+// sleep 就可能在被监视写入之前就到期——于是首次快照把测试的写入并入了基线，
+// 变化永远不被上报，测试随机失败（高负载下概率显著上升）。
+//
+// 这里不猜时间，而是**观测事实**：写入一个探针文件，一直等它被作为变化上报。
+// 收到该批次即证明"基线已建立、循环在跑、通道可用"，此后测试再写目标文件
+// 必然是相对基线的变化，确定性成立。
+//
+// 调用方必须传一个尚未占用的探针文件名，并保证它不被 ignore 规则命中。
+//
+// 匹配用后缀而非全等：单根时批次里的路径是相对路径（如 "probe.go"），
+// 多根时是带根前缀的绝对路径（如 "/tmp/x/b/probe.go"），后缀匹配对两者都成立。
+//
+// 为什么"写一轮、等一轮"而不是持续改写：去抖的语义是**安静满 Debounce
+// 才发批次**，持续改写会不断重置去抖计时器，批次永远发不出来（连续变化
+// 被合法地折叠下去，见 watch.go 的去抖分支）。所以这里必须留出真正的静默期：
+//
+//	写入探针 → 等一个静默窗口 → 仍未上报就再写一次（说明该次写入被并入了
+//	基线，或未被某次轮询观测到）→ 直到上报或超时。
+//
+// 这是"重试直到观测到事实"，而不是"睡固定时间后假设事实已成立"。
+func awaitBaseline(t *testing.T, w *Watcher, ch <-chan Batch, dir, probeName, what string) {
+	t.Helper()
+
+	probe := filepath.Join(dir, probeName)
+	matched := func(paths []string) bool {
+		for _, p := range paths {
+			if p == probeName || strings.HasSuffix(p, "/"+probeName) {
+				return true
+			}
+		}
+		return false
+	}
+
+	deadline := time.After(baselineBudget)
+	// 每轮静默窗口：去抖到期所需时间 + 两个轮询周期的余量。
+	roundWait := 2*w.spec.Debounce + 2*w.spec.Interval
+
+	for i := 1; ; i++ {
+		writeFile(t, probe, fmt.Sprintf("probe-%d\n", i))
+
+		round := time.After(roundWait)
+	roundLoop:
+		for {
+			select {
+			case b, ok := <-ch:
+				if !ok {
+					t.Fatalf("%s: channel closed while awaiting baseline", what)
+				}
+				if matched(b.Paths) {
+					return
+				}
+				// 批次里只有探针才是"基线就绪"；出现别的路径说明环境有干扰。
+				t.Fatalf("%s: unexpected batch before probe observed: %v", what, b.Paths)
+			case <-round:
+				break roundLoop // 本轮静默期已过仍无批次，补写一次再等。
+			case <-deadline:
+				t.Fatalf("%s: watcher never reported the baseline probe within %s", what, baselineBudget)
+				return
+			}
+		}
+
+		select {
+		case <-deadline:
+			t.Fatalf("%s: watcher never reported the baseline probe within %s", what, baselineBudget)
+			return
+		default:
+		}
 	}
 }
 
@@ -326,25 +406,28 @@ func TestWatcherDebouncesQuickWrites(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	// 等首个轮询周期过去，确保基线已建立、写入不会与基线取快照竞争。
-	time.Sleep(2 * testInterval)
+	// 等基线就绪（观测探针被上报），而不是猜时间。
+	awaitBaseline(t, w, ch, dir, "probe-baseline.go", "debounce test")
 
-	// 4 次快速写入，间隔远小于 debounce 窗口：应被折叠成一个批次。
+	// 跨多个轮询周期、但在一个去抖窗口内的多次写入，必须折叠成一个批次。
 	//
-	// 定时脆弱点：debounce 计时器只在某次轮询**观察到**变化时才启动。
-	// 若写入串跨越「轮询 → debounce 过期 → 再次轮询」这个边界，就会合法
-	// 地产生第二个批次，测试随抖动偶发误报。
+	// 这里刻意把写入**摊到多个轮询周期**上：每次写入后等待一个 Interval，
+	// 使轮询必然分多次观测到变化。若去抖失效（每次观测到变化就立即发批次），
+	// 就会产生多个批次；若去抖正常工作，后一次观测会重置计时器，
+	// 所有变化累积进同一批 pending，安静满 Debounce 后只发一批。
 	//
-	// 为了不受调度抖动影响，这里在写入**之前**先对齐到刚过完一次轮询的
-	// 时刻：等待一个略大于 Interval 的静默期，使下一次轮询几乎必然会
-	// 观测到整串写入。写入本身用极小间隔完成，确保它们落在同一次轮询
-	// 观测内，从而稳定折叠为单一批次。
-	time.Sleep(testInterval + 5*time.Millisecond)
-
-	target := filepath.Join(dir, "hot.go")
-	for i := 0; i < 4; i++ {
-		writeFile(t, target, strings.Repeat("x", i+1))
-		time.Sleep(200 * time.Microsecond)
+	// 这与"4 次写入挤在同一次轮询内"的写法有本质区别：后者无论去抖是否存在
+	// 都只产生一批，因此**证明不了**去抖（实测：把去抖整段删掉，旧写法仍通过）。
+	// 每个文件只写一次，避免连续改写同一路径造成去抖计时器反复重置而永不发批次。
+	var wantPaths []string
+	for i := 0; i < 3; i++ {
+		name := fmt.Sprintf("hot-%d.go", i)
+		wantPaths = append(wantPaths, name)
+		writeFile(t, filepath.Join(dir, name), strings.Repeat("x", i+1))
+		// 间隔取 Interval 的 2/3：足以让轮询跨周期观测到，
+		// 又远小于 Debounce（3 次共 ≈ 2*Interval < Debounce 的 25ms 窗口），
+		// 因此整体仍落在一个去抖窗口内。
+		time.Sleep(testInterval * 2 / 3)
 	}
 
 	batch := recvBatch(t, ch, 2*time.Second, "debounced batch")
@@ -354,14 +437,12 @@ func TestWatcherDebouncesQuickWrites(t *testing.T) {
 	if batch.At.IsZero() {
 		t.Fatal("batch.At is zero")
 	}
-	found := false
-	for _, p := range batch.Paths {
-		if p == "hot.go" {
-			found = true
+	// 关键断言：三次跨轮询的写入必须**全部**出现在这一个批次里。
+	// 缺任何一个都说明去抖把变化吞掉了（而不是折叠）。
+	for _, name := range wantPaths {
+		if !containsPath(batch.Paths, name) {
+			t.Fatalf("batch %v should contain %s（跨轮询的变化必须折叠进同一批次，不得被吞）", batch.Paths, name)
 		}
-	}
-	if !found {
-		t.Fatalf("batch %v should contain hot.go", batch.Paths)
 	}
 	// 去重：同一路径只出现一次。
 	seen := map[string]int{}
@@ -379,7 +460,8 @@ func TestWatcherDebouncesQuickWrites(t *testing.T) {
 			t.Fatalf("batch paths not sorted: %v", batch.Paths)
 		}
 	}
-	// 关键断言：这一串快速写入不得再产出第二个批次。
+	// 关键断言：跨轮询的多次写入只应产出**这一个**批次——
+	// 去抖若失效，每次轮询观测都会各发一批，这里就会发现第二、第三批。
 	assertNoBatch(t, ch, "after debounced batch")
 }
 
@@ -399,7 +481,7 @@ func TestWatcherEmitsSeparateBatchesForSeparatedChanges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	time.Sleep(2 * testInterval)
+	awaitBaseline(t, w, ch, dir, "probe-baseline.go", "separated changes test")
 
 	writeFile(t, filepath.Join(dir, "first.go"), "1")
 	first := recvBatch(t, ch, 2*time.Second, "first batch")
@@ -439,7 +521,8 @@ func TestWatcherIgnoresIgnoredPaths(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	time.Sleep(2 * testInterval)
+	// 探针名不得被本测试的 ignore 规则命中（"ignored/" 与 "*.tmp"）。
+	awaitBaseline(t, w, ch, dir, "probe-baseline.go", "ignored paths test")
 
 	writeFile(t, filepath.Join(dir, "ignored", "x.go"), "package x\n")
 	writeFile(t, filepath.Join(dir, "scratch.tmp"), "tmp")
@@ -473,7 +556,7 @@ func TestWatcherClosesOnContextCancel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	time.Sleep(2 * testInterval)
+	awaitBaseline(t, w, ch, dir, "probe-baseline.go", "cancel test")
 
 	// 制造一个在途批次，然后取消：要么先收到批次再关闭，要么直接关闭。
 	writeFile(t, filepath.Join(dir, "b.go"), "package main\n")
@@ -527,7 +610,7 @@ func TestWatcherMultipleRoots(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	time.Sleep(2 * testInterval)
+	awaitBaseline(t, w, ch, rootB, "probe-baseline.go", "multi-root test")
 
 	writeFile(t, filepath.Join(rootB, "three.go"), "package b\n")
 	batch := recvBatch(t, ch, 2*time.Second, "multi-root batch")
@@ -556,8 +639,17 @@ func TestWaitForChange(t *testing.T) {
 		t.Fatalf("WaitForChange err = %v, want DeadlineExceeded", err)
 	}
 
-	// 正常路径：稍后写入，应拿到路径。先启动等待再写，避免竞态。
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	// 正常路径：应拿到 later.go 的路径。
+	//
+	// WaitForChange 内部自己起 watcher，调用方拿不到它的基线就绪信号，
+	// 因此不能靠 sleep 猜"它快照完了没有"——太早写入会被并入基线，
+	// 于是永远等不到变化，一直挂到 ctx 超时。
+	//
+	// 改为**写一轮、等一轮**直到返回（与 awaitBaseline 同一模式）：
+	// WaitForChange 等的是"相对其基线的首个变化"，只要在它建立基线之后
+	// 再写一次就必然返回。每轮之后留出静默窗口，让去抖得以到期——若像
+	// 以前那样持续短间隔写入，会不断重置去抖计时器，批次永远发不出来。
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	type result struct {
 		paths []string
@@ -568,19 +660,34 @@ func TestWaitForChange(t *testing.T) {
 		paths, err := WaitForChange(ctx, spec)
 		resCh <- result{paths, err}
 	}()
-	time.Sleep(3 * testInterval)
-	writeFile(t, filepath.Join(dir, "later.go"), "package main\n")
 
-	select {
-	case res := <-resCh:
-		if res.err != nil {
-			t.Fatalf("WaitForChange: %v", res.err)
+	target := filepath.Join(dir, "later.go")
+	roundWait := 2*spec.Debounce + 2*spec.Interval
+	var res result
+	done := false
+	for i := 1; !done; i++ {
+		writeFile(t, target, strings.Repeat("y", i))
+
+		round := time.After(roundWait)
+	roundLoop:
+		for {
+			select {
+			case res = <-resCh:
+				done = true
+				break roundLoop
+			case <-round:
+				break roundLoop // 本轮静默期已过仍未返回，补写一次再等。
+			case <-ctx.Done():
+				t.Fatal("WaitForChange did not return before ctx deadline")
+			}
 		}
-		if !containsPath(res.paths, "later.go") {
-			t.Fatalf("WaitForChange paths = %v, want later.go", res.paths)
-		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("WaitForChange did not return")
+	}
+
+	if res.err != nil {
+		t.Fatalf("WaitForChange: %v", res.err)
+	}
+	if !containsPath(res.paths, "later.go") {
+		t.Fatalf("WaitForChange paths = %v, want later.go", res.paths)
 	}
 
 	// 非法 spec 直接报错。
