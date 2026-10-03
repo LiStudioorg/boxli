@@ -422,3 +422,147 @@ func (e *AndroidEnv) Summary() string {
 	parts = append(parts, "SELinux "+string(e.SELinux))
 	return strings.Join(parts, " / ")
 }
+
+// requiredNamespaces 是容器运行**必需**的 namespace。缺任一项 Boxli 无法提供
+// 真隔离，nsplan 会以 ErrNoNamespaces 硬失败——因此 doctor 记 StatusFail 而非警告。
+var requiredNamespaces = []string{"pid", "mnt", "uts", "ipc"}
+
+// androidCheckTimeout 说明：本检查不 fork 子进程、不写任何文件，探测耗时与
+// 读几个 /proc、/sys 文件相当，因此不需要超时或取消支持。
+
+// detectAndroidEnvFn 是探测入口的测试缝。生产环境恒为 DetectAndroidEnv。
+//
+// 约定：缝只在测试中替换（见 android_check_test.go），生产代码永不改写它；
+// 默认值即上述真实实现，替换不会改变任何对外契约。
+var detectAndroidEnvFn = DetectAndroidEnv
+
+// androidEnvCheck 生成 Android 环境专项检查项。
+//
+// 语义设计（与 nsplan 的失败模型严格对齐，不发明新的判定）：
+//   - 非 Android：StatusSkip，一行说明即止，不干扰既有的 Linux 检查输出；
+//   - Android && 必需 namespace 缺失：StatusFail（与 ErrNoNamespaces 同为硬失败）；
+//   - Android && 非 root && userns 不可用：StatusFail（与 ErrNotRoot 同为硬失败）；
+//   - Android && 其余降级（无 cgroup、enforcing、非 root 但 userns 可用、
+//     userns 不可用）：StatusWarn，能力缺失但容器仍可运行；
+//   - 其余：StatusOK。
+//
+// 无论哪种降级都会带上可执行的排查建议（Hint），不做"只报警不给办法"的输出。
+func androidEnvCheck(env *AndroidEnv) Check {
+	c := Check{ID: CheckAndroidEnv, Title: titleOf(CheckAndroidEnv)}
+
+	if env == nil || !env.IsAndroid {
+		c.Status = StatusSkip
+		c.Detail = "非 Android 平台，Android 专项检查已折叠（" + hostPlatform() + "）"
+		return c
+	}
+
+	c.Status = StatusOK
+	c.Detail = androidEnvDetail(env)
+
+	if missing := missingRequiredNamespaces(env); len(missing) > 0 {
+		c.Status = StatusFail
+		c.Hint = "内核缺少 " + strings.Join(missing, "/") + " namespace，Boxli 无法提供真隔离" +
+			"（对应 ErrNoNamespaces，官方不做无隔离的假容器）；请更换开启了 CONFIG_NAMESPACES 的 GKI 内核或 ROM"
+		return c
+	}
+	if !env.Root && !env.UserNS {
+		c.Status = StatusFail
+		c.Hint = "非 root 且 user namespace 不可用：没有任何可用隔离手段（对应 ErrNotRoot）；" +
+			"Android 有 Root 请以 root 运行（su），无 Root 官方不支持，见 docs/android-root.md"
+		return c
+	}
+	if !env.Root {
+		c.Status = StatusWarn
+		c.Hint = "非 root：Android 无 Root 官方不支持；当前仅因 user namespace 可用而可能以 rootless 启动，" +
+			"官方不保证可用性，建议以 root 运行（su）"
+		return c
+	}
+	if env.CgroupMode == CgroupNone {
+		c.Status = StatusWarn
+		c.Hint = "未探测到 cgroup 挂载：CPU/内存/PID 限制不可用（容器其余功能正常）；" +
+			"检查 /sys/fs/cgroup 是否挂载、是否可写（mkdir 探测），见 docs/android-verify.md §1.3"
+		return c
+	}
+	if env.SELinux == SELinuxEnforcing {
+		c.Status = StatusWarn
+		c.Hint = "enforcing 下容器内进程可能被策略拦截（Boxli 不改策略、不调 setenforce）；" +
+			"排查用 `dmesg | grep avc` 看 scontext/tcontext，见 docs/android-root.md 第 4.5 节"
+		return c
+	}
+	return c
+}
+
+// androidEnvDetail 组装 Android 环境检查项的详情文本。
+//
+// 渲染器按整块输出 Detail（render.go 只加一次缩进），因此这里显式给续行加
+// 同样的四空格缩进，保证 text 输出对齐。
+func androidEnvDetail(env *AndroidEnv) string {
+	var lines []string
+	lines = append(lines, env.Summary())
+	if env.KernelRelease != "" {
+		lines = append(lines, "内核 "+env.KernelRelease)
+	}
+	lines = append(lines, fmt.Sprintf("namespace 可用：%s；必需项（pid/mnt/uts/ipc）%s",
+		orNone(env.AvailableNamespaces()), orMissing(missingRequiredNamespaces(env))))
+	lines = append(lines, fmt.Sprintf("user namespace %s；cgroup %s",
+		yesNo(env.UserNS), cgroupModeLabel(env.CgroupMode)))
+	if len(env.CgroupRoots) > 0 {
+		lines = append(lines, "cgroup 挂载点 "+strings.Join(env.CgroupRoots, " "))
+	}
+	for _, w := range env.Warnings {
+		lines = append(lines, "警告: "+w)
+	}
+	return strings.Join(lines, "\n    ")
+}
+
+// missingRequiredNamespaces 返回缺失的必需 namespace。
+func missingRequiredNamespaces(env *AndroidEnv) []string {
+	if env == nil {
+		return nil
+	}
+	var missing []string
+	for _, ns := range requiredNamespaces {
+		if !env.Namespaces[ns] {
+			missing = append(missing, ns)
+		}
+	}
+	return missing
+}
+
+// cgroupModeLabel 把 cgroup 形态渲染成给人看的中文标签。
+func cgroupModeLabel(m CgroupMode) string {
+	switch m {
+	case CgroupV2:
+		return "v2（统一层级）"
+	case CgroupV1:
+		return "v1（部分控制器可能缺失）"
+	case CgroupHybrid:
+		return "v1/v2 混合（按 v2 优先）"
+	default:
+		return "未探测到（资源限制不可用）"
+	}
+}
+
+// yesNo 渲染布尔值为"可用/不可用"。
+func yesNo(ok bool) string {
+	if ok {
+		return "可用"
+	}
+	return "不可用"
+}
+
+// orNone 渲染列表，空列表显示"无"。
+func orNone(items []string) string {
+	if len(items) == 0 {
+		return "无"
+	}
+	return strings.Join(items, "/")
+}
+
+// orMissing 渲染缺失项说明，用于"必需项全部具备"的正向表述。
+func orMissing(missing []string) string {
+	if len(missing) == 0 {
+		return "全部具备"
+	}
+	return "缺失 " + strings.Join(missing, "/")
+}

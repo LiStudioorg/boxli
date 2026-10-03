@@ -58,9 +58,9 @@ adb shell su -c 'cp /data/local/tmp/boxli /data/local/bin/boxli; chmod 0755 /dat
 
 ```bash
 adb shell su -c '/data/local/bin/boxli doctor'
-# 关注 kernel.version / kernel.namespaces / cgroups.mount / cgroups.controllers 四项。
-# 注意：SELinux 状态与 Android 身份识别尚未接入 doctor 输出（见第 8 节），
-# SELinux 用 getenforce 确认。
+# 关注 kernel.version / kernel.namespaces / cgroups.mount / cgroups.controllers 四项，
+# 以及末尾的 android.env 专项（Android 版本/型号、root、cgroup 形态、SELinux、
+# namespace 矩阵、userns），缺失能力会给出排查建议。逐项含义见 android-verify.md 第 2 节。
 ```
 
 **④ 数据目录**：root 默认为 `/root/.boxli`，Android 上建议显式指定（`/data/local/tmp` 带 `nosuid` 且可能被清理）：
@@ -378,10 +378,14 @@ Boxli 先解析**宿主** `/proc/self/mountinfo` 判断现状：
 | 项 | 现状 | 计划 |
 | --- | --- | --- |
 | `boxli boot enable` 的 Magisk 后端 | 未实现（`internal/service` 仅有 systemd 后端；AGENTS.md 已登记设计） | 生成 `/data/adb/service.d/boxli.sh` |
-| `boxli doctor` 输出 Android 探测结果 | 探测函数 `DetectAndroidEnv()`（SELinux 状态、cgroup 形态、namespace 清单、userns 开关）已完成并有单测，**尚未接入 doctor 检查项输出** | 以独立 Check 项渲染 |
-| `boxli version` 的 Android 平台标识 | 显示 `linux/arm64` 等原始 GOOS/GOARCH | 识别 Android 身份后追加显示 |
+| `boxli version` 的 Android 平台标识 | 显示 `linux/arm64` 等原始 GOOS/GOARCH | 识别 Android 身份后追加 `android/arm64, root` |
 
 以上均为**已识别、未接线**状态；第 1 节矩阵中的 ✅ 不包含它们。
+
+已接线（曾在本节列出，保留对照）：`boxli doctor` 已渲染 **`android.env`** 专项检查项
+——Android 身份/版本/API/型号、root 状态、cgroup 形态、SELinux 状态、namespace 能力矩阵、
+userns 可用性与降级提示；非 Android 平台折叠为一行 `[跳过]`，不影响既有输出。
+等级判定与检索建议见 [android-verify.md](android-verify.md) 第 2 节。
 
 ---
 

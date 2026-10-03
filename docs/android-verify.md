@@ -88,17 +88,35 @@ ip link show    # iproute2（Android 为 toybox/ip 工具，一般内置）
 
 ```bash
 boxli --version
-# 期望: boxli version <ver>；若显示"尚未实现"说明拿到的是过旧二进制
+# 期望: boxli version <ver>（当前尚无平台标识，手机与服务器输出同形）
 
 boxli doctor
-# 期望（Linux/Android 同构输出）：
+# 期望（Linux/Android 同构的公共检查项）：
 #   [OK]  kernel.version       内核 >= 5.8
 #   [OK]  kernel.namespaces    namespace 支持
 #   [OK]  cgroups.mount        cgroups 挂载（Android 只挂 v1 时也应 OK）
 #   [OK]  storage.data-dir     /data/boxli 可写
-# ⚠️ doctor 尚未输出 Android 专项（SELinux 状态等），用 getenforce 确认
-#    （android-root.md 第 8 节路线图）。
+#
+# 最后一项是 Android 专项（非 Android 上折叠为一行 [跳过]，不干扰上面这些）：
+#   [OK]  android.env  Android 环境
+#       Android / 14 / API 34 / Pixel 7 / root / cgroup v2 / SELinux permissive
+#       内核 5.15.78-android13
+#       namespace 可用：cgroup/ipc/mnt/net/pid/user/uts；必需项（pid/mnt/uts/ipc）全部具备
+#       user namespace 可用；cgroup v2（统一层级）
+# ⚠️ 上述 Android 行是**按渲染契约构造的示例**（无 Android 测试机，未在真机逐字核对），
+#    字段名与判定逻辑有单测锁定；真机输出若与示例不同，以你设备上的实际值为准并反馈 issue。
 ```
+
+`android.env` 的等级含义（与运行时的失败模型严格对齐）：
+
+| 等级 | 触发条件 | 含义 |
+| --- | --- | --- |
+| OK | Android，必需 namespace 齐全，且 `root`（userns 可用与否都算正常，见 android-root.md 3.3） | 可直接跑容器 |
+| 警告 | 无 cgroup / SELinux enforcing / 非 root 但 userns 可用 | 容器能跑，但能力有缺失，建议项给出排查方向 |
+| 失败 | 必需 namespace（pid/mnt/uts/ipc）缺失，或非 root 且 userns 不可用 | 与 `ErrNoNamespaces` / `ErrNotRoot` 同为硬失败 |
+
+`android.env` 的实测状态：探测逻辑与渲染契约有单测覆盖（注入式假环境，不依赖真机），
+**Android 真机未实测**（见 android-root.md 4.6 的验证边界）。
 
 ## 3. 导入与运行
 

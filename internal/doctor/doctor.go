@@ -63,6 +63,9 @@ const (
 	CheckRootfsTest = "rootfs.test"
 	// CheckArchHost 是宿主架构与平台后端检查。
 	CheckArchHost = "arch.host"
+	// CheckAndroidEnv 是 Android 环境专项检查。
+	// 仅在 Android 上给出真实结论，其他平台折叠为 StatusSkip（见 android_linux.go）。
+	CheckAndroidEnv = "android.env"
 )
 
 // AllCheckIDs 按 Diagnose 的执行顺序返回全部检查 ID，供 CLI 校验 --skip 参数。
@@ -86,6 +89,7 @@ var checkOrder = []string{
 	CheckBinaryVersion,
 	CheckRootfsTest,
 	CheckArchHost,
+	CheckAndroidEnv,
 }
 
 // checkTitles 是各检查 ID 的中文标题，跨平台一致。
@@ -100,6 +104,7 @@ var checkTitles = map[string]string{
 	CheckBinaryVersion:      "二进制",
 	CheckRootfsTest:         "容器冒烟测试",
 	CheckArchHost:           "宿主架构",
+	CheckAndroidEnv:         "Android 环境",
 }
 
 // titleOf 返回检查 ID 对应的中文标题，未知 ID 原样返回。

@@ -96,6 +96,9 @@ func (l linuxChecker) Checks() []Check {
 }
 
 // linuxCheckList 按稳定顺序构造 Linux 检查项。
+//
+// android.env 固定排在最后：它只在 Android 上给出真实结论，其他平台上是一行
+// StatusSkip，放在末尾可保证既有检查项的顺序与输出完全不变。
 func linuxCheckList(version string) []Check {
 	return []Check{
 		kernelVersionCheck(),
@@ -107,7 +110,28 @@ func linuxCheckList(version string) []Check {
 		layersCheck(),
 		binaryCheck(version),
 		archCheck(),
+		androidEnvCheck(detectAndroidEnvResult()),
 	}
+}
+
+// detectAndroidEnvResult 调用探测缝并吞掉 error。
+//
+// 探测实现本身承诺"不因环境问题返回 error"（见 android_linux.go 文件头注释），
+// 这里再兜一层：万一未来出现致命探测失败，doctor 也不该整体失败，而是把原因
+// 显示在检查项里。失败结果标记为 IsAndroid=true 是刻意的——否则会走"非 Android
+// 折叠"分支把失败原因吞掉；宁可显示一行解释，也不静默。
+func detectAndroidEnvResult() *AndroidEnv {
+	env, err := detectAndroidEnvFn()
+	if err != nil {
+		return &AndroidEnv{
+			IsAndroid:  true,
+			CgroupMode: CgroupNone,
+			SELinux:    SELinuxUnknown,
+			Namespaces: map[string]bool{},
+			Warnings:   []string{"Android 环境探测失败，以下结论不可信: " + err.Error()},
+		}
+	}
+	return env
 }
 
 // kernelVersionCheck 检查内核版本是否满足最低要求（5.8）。
