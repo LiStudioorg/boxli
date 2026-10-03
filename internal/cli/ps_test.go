@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LiStudioorg/boxli/internal/store"
+	"github.com/LiStudioorg/licore/internal/store"
 )
 
 // newPsTestStore 造一个含两个容器的数据目录：running（假 shim=当前进程）与

@@ -34,7 +34,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LiStudioorg/boxli/internal/image"
+	"github.com/LiStudioorg/licore/internal/image"
 )
 
 // 产物构造相关的固定取值。

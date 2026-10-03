@@ -11,7 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/LiStudioorg/boxli/internal/storage"
+	"github.com/LiStudioorg/licore/internal/storage"
 )
 
 // volumeDataDir 由 volume 父命令的 persistent --data-dir 写入，子命令读取。

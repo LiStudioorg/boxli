@@ -15,7 +15,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/LiStudioorg/boxli/internal/execns"
+	"github.com/LiStudioorg/licore/internal/execns"
 )
 
 // pty ioctl 常量（syscall 包未导出）。编码：dir<<30 | size<<16 | type<<8 | nr。

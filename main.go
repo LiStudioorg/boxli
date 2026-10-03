@@ -7,7 +7,7 @@ package main
 import (
 	"os"
 
-	"github.com/LiStudioorg/boxli/internal/cli"
+	"github.com/LiStudioorg/licore/internal/cli"
 )
 
 // version 为当前版本号，正式发布时通过 -ldflags -X 注入。

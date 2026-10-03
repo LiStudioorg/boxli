@@ -11,7 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/LiStudioorg/boxli/internal/network"
+	"github.com/LiStudioorg/licore/internal/network"
 )
 
 // newNetworkCommand 实现 `boxli network` 命令树：网络驱动的创建、列举、

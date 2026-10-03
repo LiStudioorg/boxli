@@ -6,7 +6,7 @@ package runtime
 import (
 	"testing"
 
-	"github.com/LiStudioorg/boxli/internal/store"
+	"github.com/LiStudioorg/licore/internal/store"
 )
 
 func TestMountEnvRoundTrip(t *testing.T) {

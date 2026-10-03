@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/LiStudioorg/boxli/internal/network/netlink"
+	"github.com/LiStudioorg/licore/internal/network/netlink"
 )
 
 // bridgeHostIface 返回某网络在宿主上的网桥接口名。

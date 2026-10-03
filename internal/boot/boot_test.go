@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LiStudioorg/boxli/internal/store"
+	"github.com/LiStudioorg/licore/internal/store"
 )
 
 // fakeLauncher 记录被拉起的容器并返回可控结果。

@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/LiStudioorg/boxli/internal/store"
+	"github.com/LiStudioorg/licore/internal/store"
 )
 
 // 重执行 shim 的环境变量：main 分流标记 + 参数传递（与 runtime 的 BOXLI_* 同族）。

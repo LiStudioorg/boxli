@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/LiStudioorg/boxli/internal/image"
+	"github.com/LiStudioorg/licore/internal/image"
 )
 
 // Store 是 Boxli 本地数据目录（默认 ~/.boxli，可用 --data-dir 或 $BOXLI_HOME 覆盖）。

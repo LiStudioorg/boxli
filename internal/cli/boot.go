@@ -12,9 +12,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/LiStudioorg/boxli/internal/boot"
-	"github.com/LiStudioorg/boxli/internal/service"
-	"github.com/LiStudioorg/boxli/internal/store"
+	"github.com/LiStudioorg/licore/internal/boot"
+	"github.com/LiStudioorg/licore/internal/service"
+	"github.com/LiStudioorg/licore/internal/store"
 )
 
 // bootCmdOpts 汇总 boot 命令族共享的 flags。

@@ -11,8 +11,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/LiStudioorg/boxli/internal/resource"
-	"github.com/LiStudioorg/boxli/internal/store"
+	"github.com/LiStudioorg/licore/internal/resource"
+	"github.com/LiStudioorg/licore/internal/store"
 )
 
 // newStatsCommand 实现 `boxli stats`：读取容器 cgroup 用量并实时展示。

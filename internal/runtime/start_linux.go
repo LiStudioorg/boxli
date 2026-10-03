@@ -18,8 +18,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/LiStudioorg/boxli/internal/network"
-	"github.com/LiStudioorg/boxli/internal/resource"
+	"github.com/LiStudioorg/licore/internal/network"
+	"github.com/LiStudioorg/licore/internal/resource"
 )
 
 // newCID 生成本次容器实例 ID：宿主 PID + 随机后缀，保证同一 rootfs 上

@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/LiStudioorg/boxli/internal/build"
+	"github.com/LiStudioorg/licore/internal/build"
 )
 
 // writeCtx 造一个最小可构建的上下文目录：Boxfile（FROM scratch + COPY 一个

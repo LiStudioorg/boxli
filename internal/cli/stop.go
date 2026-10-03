@@ -10,8 +10,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/LiStudioorg/boxli/internal/engine"
-	"github.com/LiStudioorg/boxli/internal/store"
+	"github.com/LiStudioorg/licore/internal/engine"
+	"github.com/LiStudioorg/licore/internal/store"
 )
 
 // newStopCommand 实现 `boxli stop`：停止容器并标记 stopped-by-user。

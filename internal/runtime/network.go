@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/LiStudioorg/boxli/internal/network"
+	"github.com/LiStudioorg/licore/internal/network"
 )
 
 // 网络装配通过内部环境变量从父进程（engine/shim）传给容器 init。

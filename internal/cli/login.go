@@ -9,7 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/LiStudioorg/boxli/hub"
+	"github.com/LiStudioorg/licore/hub"
 )
 
 // newLoginCommand 实现 `boxli login [HUB]`：向 Hub 换取令牌并缓存到数据目录。

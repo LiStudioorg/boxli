@@ -8,8 +8,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/LiStudioorg/boxli/internal/runtime"
-	"github.com/LiStudioorg/boxli/internal/store"
+	"github.com/LiStudioorg/licore/internal/runtime"
+	"github.com/LiStudioorg/licore/internal/store"
 )
 
 // TestRunMarksStoppedWhenInitExits 验证：init 进程退出后，shim 必须把

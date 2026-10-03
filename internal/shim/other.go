@@ -9,7 +9,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/LiStudioorg/boxli/internal/store"
+	"github.com/LiStudioorg/licore/internal/store"
 )
 
 // 非 Linux 平台占位：shim 依赖 native_linux 运行时，随其后端一起落地。

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/LiStudioorg/boxli/internal/store"
+	"github.com/LiStudioorg/licore/internal/store"
 )
 
 // newRemoveTestStore 造一个含已停止容器的数据目录，并在容器目录里放

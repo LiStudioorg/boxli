@@ -9,7 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/LiStudioorg/boxli/hub"
+	"github.com/LiStudioorg/licore/hub"
 )
 
 // 默认 Hub 地址：优先 --hub 标志，其次 $BOXLI_HUB，最后本地开发默认地址。

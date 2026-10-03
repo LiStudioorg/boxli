@@ -13,9 +13,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/LiStudioorg/boxli/internal/image"
-	"github.com/LiStudioorg/boxli/internal/storage"
-	"github.com/LiStudioorg/boxli/internal/store"
+	"github.com/LiStudioorg/licore/internal/image"
+	"github.com/LiStudioorg/licore/internal/storage"
+	"github.com/LiStudioorg/licore/internal/store"
 )
 
 func TestParseImageRefImageOps(t *testing.T) {

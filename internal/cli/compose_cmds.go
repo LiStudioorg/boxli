@@ -16,10 +16,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/LiStudioorg/boxli/internal/build"
-	"github.com/LiStudioorg/boxli/internal/compose"
-	"github.com/LiStudioorg/boxli/internal/engine"
-	"github.com/LiStudioorg/boxli/internal/store"
+	"github.com/LiStudioorg/licore/internal/build"
+	"github.com/LiStudioorg/licore/internal/compose"
+	"github.com/LiStudioorg/licore/internal/engine"
+	"github.com/LiStudioorg/licore/internal/store"
 )
 
 // composeCmd 持有 compose 父命令的共享配置。

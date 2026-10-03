@@ -15,8 +15,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/LiStudioorg/boxli/internal/shim"
-	"github.com/LiStudioorg/boxli/internal/store"
+	"github.com/LiStudioorg/licore/internal/shim"
+	"github.com/LiStudioorg/licore/internal/store"
 )
 
 // LaunchFunc 启动一个容器的 shim 并返回 shim PID。测试注入 fake 实现；

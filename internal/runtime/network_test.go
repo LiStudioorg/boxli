@@ -6,7 +6,7 @@ package runtime
 import (
 	"testing"
 
-	"github.com/LiStudioorg/boxli/internal/network"
+	"github.com/LiStudioorg/licore/internal/network"
 )
 
 func TestNetEnvRoundTrip(t *testing.T) {

@@ -6,8 +6,8 @@ package engine
 import (
 	"testing"
 
-	"github.com/LiStudioorg/boxli/internal/network"
-	"github.com/LiStudioorg/boxli/internal/store"
+	"github.com/LiStudioorg/licore/internal/network"
+	"github.com/LiStudioorg/licore/internal/store"
 )
 
 func TestParsePorts(t *testing.T) {

@@ -14,8 +14,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/LiStudioorg/boxli/internal/service"
-	"github.com/LiStudioorg/boxli/internal/store"
+	"github.com/LiStudioorg/licore/internal/service"
+	"github.com/LiStudioorg/licore/internal/store"
 )
 
 // newPullCommand 实现 `boxli pull`。

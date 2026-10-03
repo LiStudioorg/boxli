@@ -9,8 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/LiStudioorg/boxli/internal/shim"
-	"github.com/LiStudioorg/boxli/internal/store"
+	"github.com/LiStudioorg/licore/internal/shim"
+	"github.com/LiStudioorg/licore/internal/store"
 )
 
 // newShimCommand 注册隐藏命令 `boxli dev-shim`：为已创建的容器 fork 一个

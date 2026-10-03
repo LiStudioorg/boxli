@@ -17,9 +17,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/LiStudioorg/boxli/internal/build"
-	"github.com/LiStudioorg/boxli/internal/dev"
-	"github.com/LiStudioorg/boxli/internal/store"
+	"github.com/LiStudioorg/licore/internal/build"
+	"github.com/LiStudioorg/licore/internal/dev"
+	"github.com/LiStudioorg/licore/internal/store"
 )
 
 // newBuildCommand 实现 `boxli build`：解析 Boxfile → 真正调用 build.Build()

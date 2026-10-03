@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LiStudioorg/boxli/internal/boot"
-	"github.com/LiStudioorg/boxli/internal/store"
+	"github.com/LiStudioorg/licore/internal/boot"
+	"github.com/LiStudioorg/licore/internal/store"
 )
 
 func newStopTestStore(t *testing.T, name string, restart store.Restart) (*store.Store, *store.ContainerConfig) {

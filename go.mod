@@ -1,4 +1,4 @@
-module github.com/LiStudioorg/boxli
+module github.com/LiStudioorg/licore
 
 go 1.27.1
 

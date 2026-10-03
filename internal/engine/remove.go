@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/LiStudioorg/boxli/internal/boot"
-	"github.com/LiStudioorg/boxli/internal/resource"
-	"github.com/LiStudioorg/boxli/internal/store"
+	"github.com/LiStudioorg/licore/internal/boot"
+	"github.com/LiStudioorg/licore/internal/resource"
+	"github.com/LiStudioorg/licore/internal/store"
 )
 
 // ErrContainerRunning 表示容器仍在运行，未加 --force 时拒绝删除。

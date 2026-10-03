@@ -15,8 +15,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/LiStudioorg/boxli/internal/runtime"
-	"github.com/LiStudioorg/boxli/internal/store"
+	"github.com/LiStudioorg/licore/internal/runtime"
+	"github.com/LiStudioorg/licore/internal/store"
 )
 
 // Options 是一次 shim 生命周期的装配参数。

@@ -13,10 +13,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/LiStudioorg/boxli/internal/engine"
-	"github.com/LiStudioorg/boxli/internal/network"
-	"github.com/LiStudioorg/boxli/internal/resource"
-	"github.com/LiStudioorg/boxli/internal/store"
+	"github.com/LiStudioorg/licore/internal/engine"
+	"github.com/LiStudioorg/licore/internal/network"
+	"github.com/LiStudioorg/licore/internal/resource"
+	"github.com/LiStudioorg/licore/internal/store"
 )
 
 // newRunCommand 实现 `boxli run`：镜像查找 → 层解包合并 rootfs → 写容器

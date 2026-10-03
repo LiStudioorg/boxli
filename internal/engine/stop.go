@@ -12,9 +12,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/LiStudioorg/boxli/internal/boot"
-	"github.com/LiStudioorg/boxli/internal/shim"
-	"github.com/LiStudioorg/boxli/internal/store"
+	"github.com/LiStudioorg/licore/internal/boot"
+	"github.com/LiStudioorg/licore/internal/shim"
+	"github.com/LiStudioorg/licore/internal/store"
 )
 
 // StopResult 是一次 stop 的结果。

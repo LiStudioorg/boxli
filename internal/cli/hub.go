@@ -18,7 +18,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/LiStudioorg/boxli/hub"
+	"github.com/LiStudioorg/licore/hub"
 )
 
 // newHubCommand 实现 `boxli hub` 命令树（当前仅 serve 子命令）。

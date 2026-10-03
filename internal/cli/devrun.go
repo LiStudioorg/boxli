@@ -10,7 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/LiStudioorg/boxli/internal/runtime"
+	"github.com/LiStudioorg/licore/internal/runtime"
 )
 
 // newSpikeCommand 注册隐藏命令 `boxli dev-run`：spike / 基准测试入口，

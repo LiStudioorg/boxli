@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LiStudioorg/boxli/internal/image"
+	"github.com/LiStudioorg/licore/internal/image"
 )
 
 // ---------- 测试辅助：构造层 tar.gz ----------

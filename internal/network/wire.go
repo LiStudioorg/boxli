@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LiStudioorg/boxli/internal/network/netlink"
+	"github.com/LiStudioorg/licore/internal/network/netlink"
 )
 
 // vethPair 返回某容器在某桥接网络上的 veth 接口名（网桥侧与容器侧）。

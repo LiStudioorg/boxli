@@ -8,9 +8,9 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/LiStudioorg/boxli/internal/network"
-	"github.com/LiStudioorg/boxli/internal/runtime"
-	"github.com/LiStudioorg/boxli/internal/store"
+	"github.com/LiStudioorg/licore/internal/network"
+	"github.com/LiStudioorg/licore/internal/runtime"
+	"github.com/LiStudioorg/licore/internal/store"
 )
 
 // parsePorts 把 run -p 的原始串解析为端口映射列表。支持

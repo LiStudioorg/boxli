@@ -11,8 +11,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/LiStudioorg/boxli/internal/boot"
-	"github.com/LiStudioorg/boxli/internal/store"
+	"github.com/LiStudioorg/licore/internal/boot"
+	"github.com/LiStudioorg/licore/internal/store"
 )
 
 // newPsCommand 实现 `boxli ps`：默认只列运行中容器，-a 含已停止。

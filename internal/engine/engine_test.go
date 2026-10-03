@@ -18,7 +18,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/LiStudioorg/boxli/internal/store"
+	"github.com/LiStudioorg/licore/internal/store"
 )
 
 func TestSplitImageRef(t *testing.T) {

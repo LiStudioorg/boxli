@@ -13,8 +13,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/LiStudioorg/boxli/internal/doctor"
-	"github.com/LiStudioorg/boxli/internal/scaffold"
+	"github.com/LiStudioorg/licore/internal/doctor"
+	"github.com/LiStudioorg/licore/internal/scaffold"
 )
 
 // newDoctorCommand 实现 `boxli doctor`：环境自检。

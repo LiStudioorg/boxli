@@ -20,7 +20,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LiStudioorg/boxli/internal/image"
+	"github.com/LiStudioorg/licore/internal/image"
 )
 
 const (

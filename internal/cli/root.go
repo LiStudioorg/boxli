@@ -18,8 +18,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/LiStudioorg/boxli/internal/runtime"
-	"github.com/LiStudioorg/boxli/internal/shim"
+	"github.com/LiStudioorg/licore/internal/runtime"
+	"github.com/LiStudioorg/licore/internal/shim"
 )
 
 // Version 由 main 注入（可通过 -ldflags 覆盖），用于 --version。
@@ -30,7 +30,7 @@ func NewRootCommand(out, errOut io.Writer) *cobra.Command {
 	root := &cobra.Command{
 		Use:           "boxli",
 		Short:         "Boxli —— 自研生态的轻量级容器引擎",
-		Long:          "Boxli 是一个轻量级容器引擎：自研 .boxli 镜像格式，不兼容 Docker / OCI。\n详见 https://github.com/LiStudioorg/boxli",
+		Long:          "Boxli 是一个轻量级容器引擎：自研 .boxli 镜像格式，不兼容 Docker / OCI。\n详见 https://github.com/LiStudioorg/licore",
 		Version:       Version,
 		SilenceUsage:  true,
 		SilenceErrors: true,

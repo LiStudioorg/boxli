@@ -9,8 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/LiStudioorg/boxli/internal/engine"
-	"github.com/LiStudioorg/boxli/internal/store"
+	"github.com/LiStudioorg/licore/internal/engine"
+	"github.com/LiStudioorg/licore/internal/store"
 )
 
 // newRmCommand 实现 `boxli rm`：删除已停止容器的状态目录。

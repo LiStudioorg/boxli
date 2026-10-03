@@ -21,8 +21,8 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/LiStudioorg/boxli/internal/image"
-	"github.com/LiStudioorg/boxli/internal/storage"
+	"github.com/LiStudioorg/licore/internal/image"
+	"github.com/LiStudioorg/licore/internal/storage"
 )
 
 // mustParse 解析 Boxfile 文本，失败即终止用例。

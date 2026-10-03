@@ -21,12 +21,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LiStudioorg/boxli/internal/image"
-	"github.com/LiStudioorg/boxli/internal/resource"
-	"github.com/LiStudioorg/boxli/internal/runtime"
-	"github.com/LiStudioorg/boxli/internal/shim"
-	"github.com/LiStudioorg/boxli/internal/storage"
-	"github.com/LiStudioorg/boxli/internal/store"
+	"github.com/LiStudioorg/licore/internal/image"
+	"github.com/LiStudioorg/licore/internal/resource"
+	"github.com/LiStudioorg/licore/internal/runtime"
+	"github.com/LiStudioorg/licore/internal/shim"
+	"github.com/LiStudioorg/licore/internal/storage"
+	"github.com/LiStudioorg/licore/internal/store"
 )
 
 // ErrImageNotFound 表示引用的镜像尚未导入本地数据目录。

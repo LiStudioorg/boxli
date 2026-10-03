@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/LiStudioorg/boxli/internal/storage"
-	"github.com/LiStudioorg/boxli/internal/store"
+	"github.com/LiStudioorg/licore/internal/storage"
+	"github.com/LiStudioorg/licore/internal/store"
 )
 
 // volMount 是一次 -v 的解析结果（引擎侧）。

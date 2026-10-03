@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/LiStudioorg/boxli/internal/runtime"
+	"github.com/LiStudioorg/licore/internal/runtime"
 )
 
 // newInitCommand 注册隐藏命令 `boxli init`：仅由运行时代码通过

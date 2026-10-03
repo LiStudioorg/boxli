@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/LiStudioorg/boxli/internal/storage"
-	"github.com/LiStudioorg/boxli/internal/store"
+	"github.com/LiStudioorg/licore/internal/storage"
+	"github.com/LiStudioorg/licore/internal/store"
 )
 
 func TestParseVolumes(t *testing.T) {

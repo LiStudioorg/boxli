@@ -17,7 +17,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/LiStudioorg/boxli/internal/network"
+	"github.com/LiStudioorg/licore/internal/network"
 )
 
 // Linux 挂载常量（syscall 包未导出这些位）。

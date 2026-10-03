@@ -17,7 +17,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/LiStudioorg/boxli/internal/image"
+	"github.com/LiStudioorg/licore/internal/image"
 )
 
 // ---------- 测试 fixture：构造合法 .boxli 文件 ----------

@@ -21,8 +21,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LiStudioorg/boxli/internal/image"
-	"github.com/LiStudioorg/boxli/internal/store"
+	"github.com/LiStudioorg/licore/internal/image"
+	"github.com/LiStudioorg/licore/internal/store"
 )
 
 // 本文件实现 `boxli tag` / `save` / `load` / `commit` 的纯逻辑层：
