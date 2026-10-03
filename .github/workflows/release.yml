@@ -1,0 +1,238 @@
+# Copyright (C) 2026 LiStudioorg
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# LiCore 发布流程：推送任意 tag 时构建全部平台二进制、打包、生成校验和、
+# 创建 GitHub Release 并上传资产。
+#
+# 资产设计（11 个 tar.gz）：
+#   - 除 Android 外每个平台一个纯 Go 包（默认，exec 不可用）；
+#   - linux/amd64、linux/arm64、android/arm64 额外提供 cgo 包（exec 可用），
+#     以 -cgo 后缀区分——同 GOOS/GOARCH 出两个包，因为是否支持 exec 是
+#     用户可感知的实质差异；
+#   - 每个包内含 licore 二进制 + README.md + LICENSE；
+#   - 另出 SHA256SUMS 供安装脚本校验。
+
+name: Release
+
+# 触发：push 任意 tag 都发布（不限制 v* 前缀）。
+# 注意：任何 tag 都会触发正式发布——包括随手打的临时 tag。
+# 打 tag 前请确认它就是你要发布的版本。
+on:
+  push:
+    tags:
+      - "*"
+
+# 创建 Release 需要写权限；其它一律只读。
+permissions:
+  contents: write
+
+env:
+  # 与 go.mod 的 `go` 指令保持一致，低于它会构建失败。
+  GO_VERSION: "1.27.1"
+
+jobs:
+  # 单一 job 产出全部资产：Release 需要一次性拿到完整文件列表，
+  # 拆多 job 反而要 artifact 中转与合并，得不偿失。
+  release:
+    name: 构建并发布
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          # 取回 tag 与其历史，供 Release notes 提取 tag message。
+          fetch-depth: 0
+
+      # 误发保护：任何 tag 都会触发本 workflow（含随手打的临时 tag），
+      # 但只有版本号形态（v*）才真正创建 Release。非版本 tag 仍会完整
+      # 构建与打包——这样能验证发布流程本身，只是不上传、不创建 Release。
+      # 用 shell 判断而非 `if:` 表达式，是为了让规则一目了然且可本地复测。
+      - name: 判定是否为版本 tag
+        id: check
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          case "$TAG" in
+            v[0-9]*)
+              echo "is_version=true" >> "$GITHUB_OUTPUT"
+              echo "tag $TAG 是版本 tag，将创建 Release"
+              ;;
+            *)
+              echo "is_version=false" >> "$GITHUB_OUTPUT"
+              echo "tag $TAG 不是版本 tag（不匹配 v[0-9]*），只构建不发布"
+              ;;
+          esac
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: 安装 linux/arm64 交叉 cgo 工具链
+        # 提供 licore-linux-arm64-cgo.tar.gz 所需的 aarch64 编译器。
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gcc-aarch64-linux-gnu
+          aarch64-linux-gnu-gcc --version | head -1
+
+      - name: 定位 Android NDK 编译器
+        id: ndk
+        run: |
+          ndk_dir="$(ls -d "${ANDROID_NDK_LATEST_HOME:-}" 2>/dev/null || true)"
+          if [ -z "$ndk_dir" ]; then
+            ndk_dir="$(ls -d /usr/local/lib/android/sdk/ndk/* 2>/dev/null | sort -V | tail -1 || true)"
+          fi
+          if [ -z "$ndk_dir" ]; then
+            echo "未找到 Android NDK，无法产出 android cgo 版" >&2
+            exit 1
+          fi
+          cc="$ndk_dir/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang"
+          if [ ! -x "$cc" ]; then
+            echo "NDK 中找不到编译器：$cc" >&2
+            exit 1
+          fi
+          echo "使用 NDK：$ndk_dir"
+          echo "cc=$cc" >> "$GITHUB_OUTPUT"
+
+      - name: 构建全部平台
+        env:
+          TAG: ${{ github.ref_name }}
+          NDK_CC: ${{ steps.ndk.outputs.cc }}
+        run: |
+          set -euo pipefail
+          # 去掉 tag 的 v 前缀：main.go 的 version 默认是 "0.0.0-dev" 形态，
+          # 输出为 "licore version 0.7.1 (linux/amd64)"，与之一致。
+          VERSION="${TAG#v}"
+          LDFLAGS="-s -w -X main.version=${VERSION}"
+          OUT=dist
+          mkdir -p "$OUT"
+
+          build_nocgo() { # goos goarch name
+            CGO_ENABLED=0 GOOS="$1" GOARCH="$2" \
+              go build -tags nocgo_exec -ldflags "$LDFLAGS" -o "$OUT/licore-$3" .
+          }
+          build_cgo() { # goos goarch name cc
+            CGO_ENABLED=1 GOOS="$1" GOARCH="$2" CC="$4" \
+              go build -ldflags "$LDFLAGS" -o "$OUT/licore-$3" .
+          }
+
+          # 纯 Go（默认包）：exec 不可用，其余功能完整。
+          build_nocgo linux   amd64   linux-amd64
+          build_nocgo linux   arm64   linux-arm64
+          build_nocgo linux   arm     linux-arm
+          build_nocgo linux   386     linux-386
+          build_nocgo linux   riscv64 linux-riscv64
+          build_nocgo android arm64   android-arm64
+          build_nocgo darwin  amd64   darwin-amd64
+          build_nocgo darwin  arm64   darwin-arm64
+
+          # cgo（exec 可用）：与同名纯 Go 包以 -cgo 后缀区分。
+          build_cgo linux amd64 linux-amd64-cgo gcc
+          build_cgo linux arm64 linux-arm64-cgo aarch64-linux-gnu-gcc
+          build_cgo android arm64 android-arm64-cgo "$NDK_CC"
+
+          echo "构建产物："
+          ls -la "$OUT"
+
+      - name: 打包（tar.gz，含 README 与 LICENSE）
+        run: |
+          set -euo pipefail
+          OUT=dist
+          for bin in "$OUT"/licore-*; do
+            name="$(basename "$bin")"
+            # 每个归档内统一叫 licore，解包即可用。
+            stage="$(mktemp -d)"
+            cp "$bin" "$stage/licore"
+            cp README.md LICENSE "$stage/"
+            tar -C "$stage" -czf "$OUT/${name}.tar.gz" licore README.md LICENSE
+            rm -rf "$stage"
+          done
+          # 清掉裸二进制，只留归档，避免它们被当作 Release 资产上传。
+          find "$OUT" -maxdepth 1 -type f -name 'licore-*' ! -name '*.tar.gz' -delete
+          echo "归档列表："
+          ls -la "$OUT"
+
+      - name: 生成 SHA256SUMS
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum ./*.tar.gz > SHA256SUMS
+          echo "SHA256SUMS 内容："
+          cat SHA256SUMS
+
+      - name: 自检归档完整性
+        # 上传前先确认每个归档都能解开且含预期文件，避免发出坏包。
+        run: |
+          set -euo pipefail
+          cd dist
+          for f in ./*.tar.gz; do
+            contents="$(tar -tzf "$f" | sort | tr '\n' ' ')"
+            for want in LICENSE README.md licore; do
+              case "$contents" in
+                *"$want"*) ;;
+                *) echo "$f 缺少 $want" >&2; exit 1 ;;
+              esac
+            done
+          done
+          sha256sum -c SHA256SUMS
+          echo "全部归档自检通过"
+
+      - name: 提取 Release notes
+        id: notes
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # 只从 **annotated tag** 的 message 取发布说明。
+          #
+          # 不能用"%(contents) 是否为空"来判断：对轻量 tag，git 会回落到
+          # 该 tag 指向的 commit message，于是"空则用模板"的分支永远不触发，
+          # Release notes 会变成一条 commit 日志（实测确认）。
+          # git cat-file -t 对 annotated tag 返回 "tag"，对轻量 tag 返回
+          # "commit"，据此区分才可靠。
+          msg=""
+          if [ "$(git cat-file -t "$TAG" 2>/dev/null || echo none)" = "tag" ]; then
+            msg="$(git tag -l --format='%(contents)' "$TAG" | sed '/^$/d' || true)"
+          fi
+          if [ -z "$msg" ]; then
+            echo "tag $TAG 无发布说明（轻量 tag 或 message 为空），使用模板"
+            msg="LiCore ${TAG}
+
+          各平台二进制与 SHA256SUMS 见下方资产。"
+          fi
+          {
+            echo "$msg"
+            echo
+            echo "---"
+            echo
+            echo "**校验下载**：每个归档都列入 \`SHA256SUMS\`，可用 \`sha256sum -c SHA256SUMS\` 校验。"
+            echo
+            echo "**说明**：带 \`-cgo\` 后缀的包支持 \`licore exec\`；不带的是纯 Go 构建，exec 不可用（其余功能完整）。"
+          } > /tmp/release-notes.md
+          echo "Release notes 预览："
+          cat /tmp/release-notes.md
+
+      - name: 创建 GitHub Release 并上传资产
+        # 只有版本 tag 才创建 Release；非版本 tag 到此为止（构建产物留在
+        # runner 上随其销毁，不产生任何公开资产）。
+        if: steps.check.outputs.is_version == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" \
+            --title "LiCore ${TAG}" \
+            --notes-file /tmp/release-notes.md \
+            dist/*.tar.gz dist/SHA256SUMS
+          echo "Release 已创建："
+          gh release view "$TAG" --json url,assets \
+            --jq '.url, (.assets[] | "  \(.name)  \(.size) bytes")'
+
+      - name: 非版本 tag 的结果说明
+        if: steps.check.outputs.is_version != 'true'
+        run: |
+          echo "tag 不是版本号形态，已完成构建与打包验证，但未创建 Release。"
+          echo "如需发布，请使用 v 开头的版本 tag（如 v0.8.0）。"
