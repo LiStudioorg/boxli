@@ -14,3 +14,7 @@ func AttachVeth(netName, containerID string, childPID int) error { return ErrUns
 func ConfigurePeer(netName, containerID, ip, gateway string, prefix int, hostname string) error {
 	return ErrUnsupported
 }
+
+// BringUpLoopback 非 Linux 不支持（保持跨平台签名一致；调用方仅在
+// Linux 容器 init 路径上使用）。
+func BringUpLoopback() error { return ErrUnsupported }

@@ -52,9 +52,29 @@ func AttachVeth(netName, containerID string, childPID int) error {
 	return nil
 }
 
+// BringUpLoopback 拉起当前 network namespace 的回环接口。
+//
+// 内核新建 netns 时 lo 处于 **DOWN**：容器内进程发往 127.0.0.1 的流量会一直
+// 等到超时（而不是立刻 ECONNREFUSED），极易被误判成"应用没监听"。连我们
+// 自己写进 /etc/hosts 的 `127.0.0.1 localhost` 都因此不可用。runc 与 Docker
+// 都会在容器启动时拉起 lo，此处对齐。
+//
+// 必须在容器**自己的** netns 内调用（runtime.RunInit 在 pivot_root 之后、
+// execve 之前）。bridge 与 none 模式都需要——两者都会新建 netns；host 模式
+// 共享宿主 netns，不得调用。
+func BringUpLoopback() error {
+	if err := netlink.LinkUp("lo"); err != nil {
+		return fmt.Errorf("上线容器回环 lo: %w", err)
+	}
+	return nil
+}
+
 // ConfigurePeer 在容器 netns（内部由 runtime.RunInit 在容器进程里调用）配置
 // veth 的容器侧：上线、绑定 IP、默认路由，并写容器内 resolv.conf 与 hosts
 // 使容器 DNS 指向桥接网关（内置 DNS）。返回任何错误由 init 上报给父进程。
+//
+// 回环接口不在此处理：lo 与 veth 无关，且 --network none 同样需要，
+// 故由调用方（runtime.RunInit）统一调用 BringUpLoopback。
 func ConfigurePeer(netName, containerID, ip, gateway string, prefix int, hostname string) error {
 	_, peerVeth := vethPair(netName, containerID)
 

@@ -530,6 +530,16 @@ func RunInit() error {
 	}
 	_ = syscall.Rmdir("/" + oldRoot)
 
+	// 6.5 拉起容器回环。bridge 与 none 都会新建 netns，内核默认把其中的 lo
+	//     置为 DOWN，于是容器内一切发往 127.0.0.1 的连接都只会超时。
+	//     host 模式共享宿主 netns，跳过。（降级到共享宿主 netns 时本调用
+	//     依然安全：宿主 lo 本就 UP，重复置位是幂等操作。）
+	if mode, _, _, _, _, _, _, ok := parseNetEnv(os.Environ()); ok && *mode != network.ModeHost {
+		if err := network.BringUpLoopback(); err != nil {
+			return fmt.Errorf("容器网络初始化失败: %w", err)
+		}
+	}
+
 	// 7. 容器侧网络装配：赋值 IP/路由，把 DNS 指向网桥网关。此刻已在
 	//    容器 netns 与 rootfs 内；非 bridge 模式（host/none）跳过。
 	if mode, cid, name, ip, gw, hostname, prefix, ok := parseNetEnv(os.Environ()); ok && *mode == network.ModeBridge {
