@@ -251,6 +251,7 @@ licore boot disable                       # 移除系统服务
 | Android 有 Root | 完整支持（native_linux 后端；差异自动适配，见 docs/android-root.md） |
 | Android 无 Root | 官方不支持（用户可自行在 proot 等环境中运行，不保证可用性） |
 | macOS | 通过轻量 VM |
+| Windows（WSL2 / 虚拟机） | 通过 Linux 版运行 |
 
 ### 平台能力矩阵
 
