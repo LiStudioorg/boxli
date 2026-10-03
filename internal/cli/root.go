@@ -31,7 +31,7 @@ func NewRootCommand(out, errOut io.Writer) *cobra.Command {
 		Use:           "licore",
 		Short:         "LiCore —— 自研生态的轻量级容器引擎",
 		Long:          "LiCore 是一个轻量级容器引擎：自研 .licore 镜像格式，不兼容 Docker / OCI。\n详见 https://github.com/LiStudioorg/licore",
-		Version:       Version,
+		Version:       versionString(Version),
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          cobra.ArbitraryArgs,

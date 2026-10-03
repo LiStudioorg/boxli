@@ -88,7 +88,11 @@ ip link show    # iproute2（Android 为 toybox/ip 工具，一般内置）
 
 ```bash
 licore --version
-# 期望: licore version <ver>（当前尚无平台标识，手机与服务器输出同形）
+# 期望（有 root）: licore version <ver> (android/arm64, root)
+# 期望（无 root）: licore version <ver> (android/arm64, non-root)
+# 平台串是运行时探测：真的在 Android 上才显示 android，服务器/桌面显示真实
+# GOOS/GOARCH（如 linux/amd64、darwin/arm64）。
+# ⚠️ Android 形态由单测（注入式假探测）锁定，真机未实测。
 
 licore doctor
 # 期望（Linux/Android 同构的公共检查项）：
