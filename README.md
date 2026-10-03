@@ -484,7 +484,7 @@ LiCore 只认 `.licore`。这不是"还没做"，是设计选择（见 [docs/ima
 | **大规模并发** | ⚠️ 仅到 100 | 100 容器已实测；更高密度、长时间运行、压测下的稳定性未验证 |
 | **非 root（rootless）完整功能** | ⚠️ 部分 | user namespace 可跑，但网络仅 host / none，cgroup 限额视委派而定 |
 | **`licore boot enable`** | ⚠️ 部分 | systemd unit **生成与内容**已验证；未在真机实际 `enable` 并重启验证 |
-| **Windows** | ❌ 不支持 | 无计划 |
+| **Windows** | ⚙️ 通过 WSL2 | 在 WSL2（或虚拟机）里安装 Linux 版 LiCore，与原生 Linux 体验一致；LiCore 本身不提供 Windows 原生后端。 |
 | **ARM / 386 / riscv64 真机运行** | ⚠️ 仅交叉编译 | 这些平台**能编译通过**，但未在对应硬件上运行验证 |
 
 > 我们宁可在 README 里写"没验证过"，也不希望你踩到才发现。发现文档与实现不符请
