@@ -220,13 +220,82 @@ CGO_ENABLED=0 GOOS=android GOARCH=arm64 go build -o licore-android-arm64 .
 
 ⚠️ **与 Docker 不兼容**：`.licore` 不能由 Docker 构建或运行，`docker` 镜像也不能被 LiCore 使用。LiCore 配套自己的镜像构建与分发工具链（`licore hub`），生态完全独立。
 
-## 开发命令
+## 构建
+
+### 快速开始（Makefile）
+
+```bash
+make all            # 默认：linux/amd64 + linux/arm64 + android/arm64
+make linux          # 桌面 Linux（amd64 + arm64）
+make android        # Android arm64；有 NDK 则含 cgo（exec 可用），无则自动降级
+make android-nocgo  # Android arm64 纯 Go（exec 不可用，其余功能正常）
+make test           # go test ./...
+make vet            # go vet ./...
+make fmt            # gofmt 检查（有未格式化文件则失败）
+make clean          # 清理 dist/
+make install        # 装到 /usr/local/bin/licore
+make help           # 列出全部目标
+```
+
+产物统一落在 `dist/`，形如 `dist/licore-linux-amd64`。版本号可注入：
+`make VERSION=0.7.0 all`。
+
+> 需要 `licore exec` 的 Linux 服务器请自行用 cgo 构建（Makefile 目标是纯 Go，
+> 不含 exec）：
+>
+> ```bash
+> CGO_ENABLED=1 go build -ldflags '-X main.version=0.7.0' -o licore .
+> ```
+
+### 构建矩阵
+
+`licore exec` 需要 cgo（见下方说明），因此**凡 `CGO_ENABLED=0` 的构建都没有 exec**，
+包括默认的 `make linux`。这一列是实测结论，不是推断：
+
+| 目标平台 | 命令 | cgo | 交叉编译前置依赖 | `licore exec` |
+| --- | --- | --- | --- | --- |
+| linux/amd64 | `make linux` | 否（纯 Go） | 无 | ❌ 明确报错 |
+| linux/arm64 | `make linux` | 否（纯 Go） | 无 | ❌ 明确报错 |
+| android/arm64 | `make android`（有 NDK） | **是** | Android NDK（`ANDROID_NDK_HOME`） | ✅ |
+| android/arm64 | `make android`（无 NDK，自动降级） | 否 | 无 | ❌ 明确报错 |
+| android/arm64 | `make android-nocgo` | 否（纯 Go） | 无 | ❌ 明确报错 |
+| linux/amd64（本机） | `CGO_ENABLED=1 go build -o licore .` | 是 | 本机 C 工具链 | ✅ |
+| darwin/arm64、linux/386、linux/riscv64 等 | 手动命令 | 否 | 无 | ❌（非 linux 恒为 stub） |
+
+**为什么 exec 要 cgo**：`licore exec` 需要进入容器的挂载命名空间，必须
+`setns(CLONE_NEWNS)`，而纯 Go 无法安全调用（Go issue #9091），因此由可选 cgo 组件
+`internal/execns` 承担。纯 Go 构建下 exec 返回明确的 `ErrNoCgoExec`
+（提示"exec 需要 cgo 构建（CGO_ENABLED=1）"）——**不是"部分可用"，是明确拒绝**，
+其余功能完全正常。需要 exec 就选一个带 cgo 的构建。
+
+### 交叉编译（不依赖 Makefile）
+
+```bash
+# 服务器与桌面：无需任何工具链
+CGO_ENABLED=0 GOOS=linux  GOARCH=arm64 go build -tags nocgo_exec -o licore-linux-arm64 .
+CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -tags nocgo_exec -o licore-darwin-arm64 .
+
+# Android 纯 Go（exec 不可用）
+CGO_ENABLED=0 GOOS=android GOARCH=arm64 go build -tags nocgo_exec -o licore-android-arm64 .
+
+# Android 含 cgo（exec 可用）：需要 Android NDK
+NDK=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin
+CGO_ENABLED=1 GOOS=android GOARCH=arm64 \
+  CC=$NDK/aarch64-linux-android21-clang \
+  go build -o licore-android-arm64 .
+```
+
+前提：Go **1.27+**（`go.mod` 的 `go` 指令）；Android 侧还需一台已 Root 的设备，
+安装与验证步骤见 [docs/android-root.md](docs/android-root.md) 与
+[docs/android-verify.md](docs/android-verify.md)。
+
+### 开发命令
 
 ```bash
 go build -o licore .   # 根目录编译
-go vet ./...          # 静态检查
-gofmt -l .            # 格式检查
-go test ./...         # 测试
+go vet ./...           # 静态检查
+gofmt -l .             # 格式检查
+go test ./...          # 测试
 ```
 
 ## 开源协议
