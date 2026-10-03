@@ -19,7 +19,7 @@
 
 ## 快速开始
 
-> LiCore 已发布 **v0.7.1**：镜像、运行时、网络、卷、资源限制、`exec`、Hub 分发均落地，`licore build` 真正构建并导入镜像、`compose up/scale` 真正创建容器。v0.6.0 补齐了 cgroup 限额真正生效、`exec` 进入全部命名空间、卷 `:ro` 只读、同名并发创建的原子性，并修复了 netlink 组包缺陷；v0.7.x 起加入 CI / 自动发布与一行安装脚本。真机验收与审计见 [docs/test-report-v0.6.0.md](docs/test-report-v0.6.0.md)、[docs/audit-v0.6.0.md](docs/audit-v0.6.0.md)。
+> LiCore 已具备完整的镜像、运行时、网络、卷、资源限制、`exec`、Hub 分发能力，并配有 CI 与一行安装脚本。最新版本见 <https://github.com/LiStudioorg/licore/releases>。
 
 ```bash
 licore build -t demo:v1 .                            # 根据 Boxfile 构建 .licore 并自动导入
@@ -38,7 +38,7 @@ licore stats                                         # 实时查看容器资源�
 > Hub 分发（`login/pull/push/search`）与服务端（`hub serve`）、compose 编排
 > （`compose up/down/ps/logs/scale/config`）。可执行 `licore --help` 查看完整命令树。
 
-> ⚠️ v0.4.0 起网络 veth、cgroup 写入、`licore exec` 需要 **root**（CAP_NET_ADMIN / CAP_SYS_ADMIN）；
+> ⚠️ 网络 veth、cgroup 写入、`licore exec` 需要 **root**（CAP_NET_ADMIN / CAP_SYS_ADMIN）；
 > 未实现的资源能力（`--storage`/`--gpu`/`--npu`/`--network-bandwidth`）会显式报错而非静默生效。
 
 ## 安装
@@ -252,7 +252,10 @@ licore boot disable                       # 移除系统服务
 | Android 无 Root | 官方不支持（用户可自行在 proot 等环境中运行，不保证可用性） |
 | macOS | 通过轻量 VM |
 
-### 平台能力矩阵（v0.6.0 实测）
+### 平台能力矩阵
+
+> 下表是**真机逐项实测**的结果。之所以不标版本号：能力矩阵只在重新跑一遍真机验收时才更新，
+> 而版本号每发一次就会变，写死会让读者误以为矩阵已经过时。**没在真机上重测过，就不改这里的 ✅/❌。**
 
 | 能力 | Linux（root） | Linux（非 root） | Android（root） | macOS | `CGO_ENABLED=0` 构建 |
 | --- | --- | --- | --- | --- | --- |
@@ -267,7 +270,9 @@ licore boot disable                       # 移除系统服务
 ¹ 官方 `GOOS=android` 交叉编译是纯 Go，`exec` 返回明确错误；用 NDK 做 cgo 交叉编译后完整可用。
 ² 临时替代：手动放置 `/data/adb/service.d/licore.sh`（见 [docs/android-root.md](docs/android-root.md) 第 2 节）。
 
-### 已知限制（v0.6.0）
+### 已知限制
+
+> 同样来自真机实测；**未修复之前不会从这里删掉**。
 
 - **`-p` 端口映射依赖宿主的 FORWARD 链**：若宿主 `iptables` FORWARD 策略为 `DROP`
   且没有放行 licore 网桥的规则（部分云主机、启用 rootless-docker 的机器如此），
