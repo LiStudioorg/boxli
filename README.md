@@ -60,6 +60,10 @@ boxli build -f path/to/Boxfile -t demo:v1 --context ./src
 boxli images                              # 看到 demo:v1
 ```
 
+- **构建上下文必须显式给出**（末尾位置参数或 `--context`，当前目录就传 `.`）：
+  上下文决定 `COPY` 的源目录，静默落到 cwd 会把错误的（甚至敏感的）文件打进
+  镜像；两者同时给出且不一致会直接报错。
+
 - `FROM scratch` 为空基础镜像；`FROM name:version` 需先在本地存在（或先 `boxli pull`）。
 - 未实现的指令（`RUN`、远程 `ADD`）与资源能力会显式报错，不假装成功。
 
@@ -90,7 +94,7 @@ boxli run --memory 256 --memory-swap 512 myapp:v1    # 内存（MiB，含软限�
 boxli run --cpus 2 --cpuset-cpus 0-3  myapp:v1        # CPU 配额与绑核
 boxli run --pids-limit 128 myapp:v1                   # PID 上限
 boxli run --gpu 1 --npu 1 myapp:v1                    # 加速器直通
-boxli run --storage 1g --network-bandwidth 10mbps myapp:v1   # 存储配额与带宽
+boxli run --storage 1024 --network-bandwidth 10mbps myapp:v1  # 存储配额与带宽（当前显式报错，见已知限制）
 boxli resource info      # 资源能力诊断（cgroups v2 / 配额 / 加速器）
 boxli stats  [容器ID]     # 实时资源用量
 boxli resource update 容器ID --memory 512   # 动态调整运行中容器限制
@@ -116,7 +120,8 @@ boxli exec -e FOO=bar -w /data -u 1000 myapp /bin/env   # 环境变量 / 工作�
 > - `go build -o boxli .`（默认，Linux + cgo 可用）→ `exec` 功能完整。
 > - `CGO_ENABLED=0 go build -o boxli .` 或 `-tags nocgo_exec` → 自动走纯 Go stub，
 >   其余功能完全不受影响，只有 `boxli exec` 会返回明确的"未启用 cgo 支持"错误。
-> - 其他平台（darwin / android）始终使用 stub，`exec` 返回未支持错误。
+> - `GOOS=android` 官方交叉编译为纯 Go，`exec` 同样返回明确错误；需要 Android 上
+>   的 `exec` 请用 NDK 工具链做 cgo 交叉编译（见 [docs/android-root.md](docs/android-root.md) 第 2 节）。
 > - 交叉编译到 linux/arm64 需要对应架构的 C 工具链；没有时可加 `-tags nocgo_exec`。
 
 ## 自建 Hub 服务（hub serve）
@@ -149,7 +154,7 @@ boxli boot disable                       # 移除系统服务
 | 平台 | 支持级别 |
 | --- | --- |
 | Linux 服务器 | 完整支持 |
-| Android 有 Root | 完整支持 |
+| Android 有 Root | 完整支持（native_linux 后端；差异自动适配，见 docs/android-root.md） |
 | Android 无 Root | 官方不支持（用户可自行在 proot 等环境中运行，不保证可用性） |
 | macOS | 通过轻量 VM |
 
@@ -160,9 +165,13 @@ boxli boot disable                       # 移除系统服务
 | 镜像 / 卷 / `build` | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `run` / `stop` / `ps` / `rm` | ✅ | ✅ | ✅ | — | ✅ |
 | 网络（bridge / veth / NAT / DNS） | ✅ | 仅 host / none | ✅ | — | ✅ |
-| 资源限制（cgroup v2） | ✅ | ⚠️ 视 cgroup 委派而定 | ✅ | — | ✅ |
-| `exec` 进入命名空间 | ✅ | ❌（需 CAP_SYS_ADMIN） | ✅ | ❌ | ❌ 返回明确错误 |
+| 资源限制（cgroup） | ✅ v2 | ⚠️ 视 cgroup 委派而定 | ✅ v2 优先，自动回退 v1 | — | ✅ |
+| `exec` 进入命名空间 | ✅ | ❌（需 CAP_SYS_ADMIN） | ✅ 仅 cgo 构建¹ | ❌ | ❌ 返回明确错误 |
 | 卷 `:ro` 只读 | ✅ | ✅ | ✅ | — | ✅ |
+| 开机自启（boot enable） | ✅ systemd | ✅ systemd（用户级视环境） | ❌ Magisk 后端未实现² | — | ✅ |
+
+¹ 官方 `GOOS=android` 交叉编译是纯 Go，`exec` 返回明确错误；用 NDK 做 cgo 交叉编译后完整可用。
+² 临时替代：手动放置 `/data/adb/service.d/boxli.sh`（见 [docs/android-root.md](docs/android-root.md) 第 2 节）。
 
 ### 已知限制（v0.6.0）
 
@@ -175,6 +184,10 @@ boxli boot disable                       # 移除系统服务
   跨容器复用且不会自动清理（引用计数尚未实现）。
 - **未实现的资源能力显式报错**：`--storage`、`--gpu`、`--npu`、`--network-bandwidth`
   在 CLI 层直接拒绝，不会静默降级。
+- **Android**：`boxli boot enable` 尚不生成 Magisk `service.d` 脚本（手动放置可替代）；
+  `boxli doctor` 未输出 Android 专项（SELinux 状态等，探测函数已就绪未接线）；
+  SELinux **enforcing 真机行为未实测**（无测试机），Boxli 从不调 `setenforce`、
+  不改设备策略。详见 [docs/android-root.md](docs/android-root.md) 第 8 节。
 
 ### Android 支持策略
 
@@ -188,8 +201,18 @@ boxli boot disable                       # 移除系统服务
   目录，无法提供真正的进程 / 挂载 / 网络 / 资源隔离——这与 Boxli "真隔离" 的
   容器模型冲突，因此官方不支持。
 
-有 Root 设备上的适配细节（SELinux 处理与限制、cgroup v1/v2 回退、
-`/dev` 与 `/proc` 装配、排查指引）见 [docs/android-root.md](docs/android-root.md)。
+**安装（有 Root）**：开发机交叉编译 → `adb push` 到 `/data/local/bin/boxli` →
+`chmod 0755` → `su` 下运行并建议 `BOXLI_HOME=/data/boxli`：
+
+```bash
+CGO_ENABLED=0 GOOS=android GOARCH=arm64 go build -o boxli-android-arm64 .
+# 需要 exec 功能时改用 NDK cgo 交叉编译（docs/android-root.md 第 2 节）
+```
+
+有 Root 设备上的适配细节（SELinux 处理与限制、cgroup v1/v2 回退与语义差异、
+命名空间矩阵、root 下为何不用 user namespace、`/dev` 与 `/proc` 装配、排查指引）
+见 [docs/android-root.md](docs/android-root.md)；逐项验收命令与期望输出见
+[docs/android-verify.md](docs/android-verify.md)。
 
 ## 镜像格式：.boxli
 
