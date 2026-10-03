@@ -1,17 +1,17 @@
-# Boxli — AI 协作者指南
+# LiCore — AI 协作者指南
 
-本文件面向参与 Boxli 开发的 AI 代理与人类协作者，描述项目定位、核心约定与代码规矩。开始动手前请先通读本文件。
+本文件面向参与 LiCore 开发的 AI 代理与人类协作者，描述项目定位、核心约定与代码规矩。开始动手前请先通读本文件。
 
 ## 项目是什么
 
-Boxli 是一个用 Go 编写的**轻量级容器引擎**，使用场景类似 Docker，但**不兼容 Docker / OCI，完全自研生态**：自研镜像格式、自研分发方式、自研运行时与网络。目标平台为 Linux 服务器、Android（有 Root / 无 Root）、macOS；支持多 CPU 架构；引擎常驻内存目标 **10–20 MiB**。
+LiCore 是一个用 Go 编写的**轻量级容器引擎**，使用场景类似 Docker，但**不兼容 Docker / OCI，完全自研生态**：自研镜像格式、自研分发方式、自研运行时与网络。目标平台为 Linux 服务器、Android（有 Root / 无 Root）、macOS；支持多 CPU 架构；引擎常驻内存目标 **10–20 MiB**。
 
 ## 核心约定
 
 - **语言**：Go，纯 Go，**不使用 CGO**（`CGO_ENABLED=0`）。**唯一例外**：`internal/execns` 的 setns 进入容器挂载命名空间必须用 cgo（纯 Go 无法 setns(CLONE_NEWNS)，见 Go issue #9091）；该组件为可选构建（`-tags nocgo_exec` 走 stub），其余所有代码保持纯 Go。
-- **模块路径**：`github.com/LiStudioorg/boxli`。
-- **可执行文件**：`boxli`；`main.go` 位于项目根目录，便于在根目录直接 `go build`。
-- **镜像后缀**：`.boxli`。
+- **模块路径**：`github.com/LiStudioorg/licore`。
+- **可执行文件**：`licore`；`main.go` 位于项目根目录，便于在根目录直接 `go build`。
+- **镜像后缀**：`.licore`。
 - **镜像格式**：分层 gzip tar + 自研 `index.json` 清单，与 Docker / OCI 镜像**互不兼容**。
 - **开源协议**：AGPL-3.0-only（见 `LICENSE`）。每个 `.go` 文件头部必须带版权声明：
 
@@ -25,20 +25,20 @@ Boxli 是一个用 Go 编写的**轻量级容器引擎**，使用场景类似 Do
 ## 目录结构
 
 ```
-boxli/
+licore/
 ├── main.go              # CLI 入口（根目录，直接 go build 即可编译）
 ├── hub/                 # 分发服务端：blob 存储 + JWT 鉴权 HTTP API + 客户端 Client
 ├── internal/
 │   ├── runtime/         # 容器运行时：创建 / 启动 / 停止 / 回收，按平台后端分文件
-│   ├── image/           # .boxli 镜像的拉取、解析、校验（分层 gzip tar + index.json）
+│   ├── image/           # .licore 镜像的拉取、解析、校验（分层 gzip tar + index.json）
 │   ├── network/         # 自研容器网络：容器间通信与 NAT 出口
 │   ├── storage/         # 镜像与容器层存储：解压、层合并、读写层、卷
 │   │   └── volume/      # 卷：驱动、命名/匿名卷、配额（volume/tmpfs/snapshot）
-│   ├── store/           # 数据目录（~/.boxli）：pull 落地、state.json、boot 标记
+│   ├── store/           # 数据目录（~/.licore）：pull 落地、state.json、boot 标记
 │   ├── resource/        # 资源限制与采集：CPU / 内存 / PID / 加速器直通
-│   ├── engine/          # `boxli run` 编排层：镜像查找 → 解包合并 → 状态落盘 → 启停
+│   ├── engine/          # `licore run` 编排层：镜像查找 → 解包合并 → 状态落盘 → 启停
 │   ├── shim/            # 每容器生命周期持有者（shim 进程 + restart 策略）
-│   ├── boot/            # `boxli boot` 一次性扫描拉起自启容器
+│   ├── boot/            # `licore boot` 一次性扫描拉起自启容器
 │   ├── service/         # 系统服务（systemd / launchd / Magisk / Termux）管理
 │   ├── build/           # 自研镜像构建：boxfile 解析 → 层生成
 │   ├── compose/         # compose 编排解析与执行
@@ -47,9 +47,9 @@ boxli/
 │   ├── scaffold/        # 项目脚手架：boxfile/compose 模板与 lint
 │   └── execns/          # 可选 cgo 组件：exec 进入容器 mnt/uts/ipc/net/pid 命名空间
 ├── pkg/
-│   └── sdk/             # 对外 Go SDK，供第三方以库方式驱动 Boxli
+│   └── sdk/             # 对外 Go SDK，供第三方以库方式驱动 LiCore
 ├── docs/
-│   └── image-spec.md    # .boxli 镜像格式规范（单一事实来源，改格式先改这里）
+│   └── image-spec.md    # .licore 镜像格式规范（单一事实来源，改格式先改这里）
 ├── go.mod
 ├── LICENSE              # AGPL-3.0
 ├── AGENTS.md
@@ -74,8 +74,8 @@ boxli/
 
 - **Android 有 Root：官方原生支持**。走 `native_linux` 后端，使用
   namespace + cgroup，功能与 Linux 服务器一致，完整可用。
-- **Android 无 Root：官方不支持**。Boxli 不做任何 proot 适配、不检测 proot、
-  不集成 proot；用户可在 proot / Termux 等用户态 Linux 环境里自行运行 boxli，
+- **Android 无 Root：官方不支持**。LiCore 不做任何 proot 适配、不检测 proot、
+  不集成 proot；用户可在 proot / Termux 等用户态 Linux 环境里自行运行 licore，
   但官方不保证可用性、不提供技术支持。
 - **原因**：无 Root 的 Android 缺少容器所需的内核隔离能力（namespace /
   cgroup / setns 等），任何用户态方案（包括 proot）都无法提供真正的隔离。
@@ -83,11 +83,11 @@ boxli/
 
 ## 开机自启动机制
 
-Boxli **不采用全局常驻守护进程**。开机自启 = 一个**全局一次性系统服务** + **容器自身的 restart 策略**：
+LiCore **不采用全局常驻守护进程**。开机自启 = 一个**全局一次性系统服务** + **容器自身的 restart 策略**：
 
-- 系统里只生成**一个** Boxli 服务文件。
-- 开机时系统调用一次 `boxli boot`。
-- `boxli boot` 扫描容器状态文件，拉起设置了自启的容器，**执行完即退出，不常驻**。
+- 系统里只生成**一个** LiCore 服务文件。
+- 开机时系统调用一次 `licore boot`。
+- `licore boot` 扫描容器状态文件，拉起设置了自启的容器，**执行完即退出，不常驻**。
 - 每个容器的生命周期由一个轻量 **shim 进程**持有（类似 Podman 的 conmon），引擎本体不常驻。
 
 ### 容器自启动标志（restart 策略）
@@ -95,9 +95,9 @@ Boxli **不采用全局常驻守护进程**。开机自启 = 一个**全局一�
 创建容器时指定：
 
 ```bash
-boxli run -d --restart always         alice/myapp:v1
-boxli run -d --restart unless-stopped alice/myapp:v1
-boxli run -d --restart no             alice/myapp:v1
+licore run -d --restart always         alice/myapp:v1
+licore run -d --restart unless-stopped alice/myapp:v1
+licore run -d --restart no             alice/myapp:v1
 ```
 
 | 策略 | 行为 |
@@ -107,50 +107,50 @@ boxli run -d --restart no             alice/myapp:v1
 | `unless-stopped` | 类似 always，但用户手动 `stop` 后开机不再拉起 |
 | `on-failure` | 非零退出码才被 shim 重启；**开机不自动启动** |
 
-### 一键配置系统服务（boxli boot enable/disable/status）
+### 一键配置系统服务（licore boot enable/disable/status）
 
-用户只需一条命令，无需手写服务文件。`boxli boot enable` 自动检测平台并完成配置：
+用户只需一条命令，无需手写服务文件。`licore boot enable` 自动检测平台并完成配置：
 
 | 平台 | 服务文件 | 注册方式 |
 | --- | --- | --- |
-| Linux | `/etc/systemd/system/boxli.service` | `systemctl daemon-reload && systemctl enable boxli` |
-| macOS | `~/Library/LaunchAgents/dev.boxli.boot.plist` | `launchctl load` |
-| Android（Root） | `/data/adb/service.d/boxli.sh`（赋执行权限） | Magisk service.d |
+| Linux | `/etc/systemd/system/licore.service` | `systemctl daemon-reload && systemctl enable licore` |
+| macOS | `~/Library/LaunchAgents/dev.licore.boot.plist` | `launchctl load` |
+| Android（Root） | `/data/adb/service.d/licore.sh`（赋执行权限） | Magisk service.d |
 | Android（无 Root） | 不支持（见《Android 支持策略》） | 官方不提供自启支持 |
 
-- `boxli boot enable`：写入服务文件并注册，完成后输出服务文件路径与状态。
-- `boxli boot disable`：自动移除对应平台的系统服务文件并取消注册。
-- `boxli boot status`：显示开机自启是否启用、服务类型、服务文件路径；列出所有设置了 `restart=always` / `unless-stopped` 的容器及其状态。
-- `boxli boot`：由系统服务在开机时调用的一次性命令。扫描所有容器状态文件 → 启动 `restart=always` 或 `unless-stopped` 的容器 → 跳过标记 `stopped-by-user` 的 `unless-stopped` 容器 → 每个容器 fork 一个轻量 shim → 退出。
+- `licore boot enable`：写入服务文件并注册，完成后输出服务文件路径与状态。
+- `licore boot disable`：自动移除对应平台的系统服务文件并取消注册。
+- `licore boot status`：显示开机自启是否启用、服务类型、服务文件路径；列出所有设置了 `restart=always` / `unless-stopped` 的容器及其状态。
+- `licore boot`：由系统服务在开机时调用的一次性命令。扫描所有容器状态文件 → 启动 `restart=always` 或 `unless-stopped` 的容器 → 跳过标记 `stopped-by-user` 的 `unless-stopped` 容器 → 每个容器 fork 一个轻量 shim → 退出。
 
 ### 首次使用引导
 
-用户首次执行任意 `boxli` 命令时，若检测到未启用开机自启，提示：
+用户首次执行任意 `licore` 命令时，若检测到未启用开机自启，提示：
 
 ```text
-检测到 Boxli 尚未启用开机自启
+检测到 LiCore 尚未启用开机自启
 是否启用？启用后开机会自动拉起设置了 restart=always 的容器
 [y/N]:
 ```
 
-用户确认后自动执行 `boxli boot enable`。默认（直接回车）视为拒绝。
+用户确认后自动执行 `licore boot enable`。默认（直接回车）视为拒绝。
 
 ### 停止容器时的状态记录
 
-`boxli stop myapp`：停止容器 → 标记 `stopped-by-user`。下次开机时 `unless-stopped` 的容器不再被拉起；`always` 的容器仍会被拉起（与 Docker 行为一致）。
+`licore stop myapp`：停止容器 → 标记 `stopped-by-user`。下次开机时 `unless-stopped` 的容器不再被拉起；`always` 的容器仍会被拉起（与 Docker 行为一致）。
 
 ### systemd 服务文件内容（Linux）
 
 ```ini
 [Unit]
-Description=Boxli container engine
+Description=LiCore container engine
 After=network.target
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/usr/local/bin/boxli boot
-ExecStop=/usr/local/bin/boxli shutdown
+ExecStart=/usr/local/bin/licore boot
+ExecStop=/usr/local/bin/licore shutdown
 
 [Install]
 WantedBy=multi-user.target
@@ -159,11 +159,11 @@ WantedBy=multi-user.target
 ### CLI 命令汇总（boot 相关）
 
 ```text
-boxli boot enable    启用开机自启
-boxli boot disable   关闭开机自启
-boxli boot status    查看开机自启状态与自启容器列表
-boxli boot           由系统服务在开机时调用，一次性拉起自启容器
-boxli shutdown       由系统服务停止时调用，优雅停止自启容器
+licore boot enable    启用开机自启
+licore boot disable   关闭开机自启
+licore boot status    查看开机自启状态与自启容器列表
+licore boot           由系统服务在开机时调用，一次性拉起自启容器
+licore shutdown       由系统服务停止时调用，优雅停止自启容器
 ```
 
 ## 代码规矩
@@ -171,14 +171,14 @@ boxli shutdown       由系统服务停止时调用，优雅停止自启容器
 - **错误处理**：错误必须包装上下文后再向上返回：`fmt.Errorf("load index: %w", err)`；只在 `main.go` / CLI 出口层打印，中间层只 `return`。忽略错误必须显式 `_ =`。
 - **日志**：统一使用标准库 `log/slog`，结构化字段（`slog.String("container", id)` 等）；禁止 `fmt.Println` 打日志、禁止引入第三方日志库。
 - **CLI**：使用 [cobra](https://github.com/spf13/cobra) 组织命令树（`pull` / `run` / `ps` / `exec` / `images` / `boot [enable|disable|status]` / `shutdown`；`run` 支持 `--restart no|always|unless-stopped|on-failure`）。命令注册代码全部在 `internal/cli`，未实现命令统一返回"尚未实现"。隐藏命令（`init` / `dev-run`）仅内部与开发用途，不在帮助中展示。
-- **配置**：一律 YAML（`~/.boxli/config.yaml` 及镜像 `index.json` 旁挂配置），字段用 `yaml` tag 显式命名；不要混用 TOML/JSON 配置文件（`index.json` 属于镜像格式，不算配置文件）。
+- **配置**：一律 YAML（`~/.licore/config.yaml` 及镜像 `index.json` 旁挂配置），字段用 `yaml` tag 显式命名；不要混用 TOML/JSON 配置文件（`index.json` 属于镜像格式，不算配置文件）。
 - **依赖**：阶段 0 `go.mod` 保持零第三方依赖；新增第三方库必须在 PR 里单独说明理由，容器/镜像/oci 相关的库一律不批。
 - **命名与注释**：导出标识符必须有文档注释；文件头保留 AGPL 版权声明两行。
 
 ## 禁止事项
 
 1. **禁止**引入任何第三方容器组件 / 容器库（Docker、containerd、runc、buildkit、OCI 相关库、cgroups 库等）——容器生态完全自研。
-2. **禁止**做任何形式的 Docker / OCI 兼容（不做镜像格式转换、不实现Distribution API），Boxli 只认 `.boxli`。
+2. **禁止**做任何形式的 Docker / OCI 兼容（不做镜像格式转换、不实现Distribution API），LiCore 只认 `.licore`。
 3. **Android 无 Root 官方不支持**（见《Android 支持策略》）：不得引入/检测 proot 或 Termux、不得引导用户提权，也不得尝试任何用户态隔离方案冒充真隔离。
 4. **禁止** CGO。**唯一例外**为 `internal/execns`（进入容器挂载命名空间必须用 cgo，纯 Go 无法
    `setns(CLONE_NEWNS)`，见 Go issue #9091）：该包必须同时提供 `-tags nocgo_exec` 与 `!linux`
@@ -190,19 +190,19 @@ boxli shutdown       由系统服务停止时调用，优雅停止自启容器
 ## 常用命令
 
 ```bash
-go build -o boxli .        # 在根目录编译，产出 ./boxli
+go build -o licore .        # 在根目录编译，产出 ./licore
 go vet ./...               # 静态检查
 gofmt -l .                 # 格式化检查（输出应为空）
 go test ./...              # 运行测试
 go run .                   # 快速跑一下 CLI
 # 交叉编译示例：
-CGO_ENABLED=0 GOOS=android GOARCH=arm64 go build -o boxli-android-arm64 .
-CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -o boxli-darwin-arm64 .
+CGO_ENABLED=0 GOOS=android GOARCH=arm64 go build -o licore-android-arm64 .
+CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -o licore-darwin-arm64 .
 ```
 
 ## 镜像格式：唯一规范在 docs/image-spec.md
 
-`.boxli` = 外层未压缩 tar（内含 `index.json` + `layers/NNNNNN.<name>.tar.gz` + 可选 `blobs/`）。
+`.licore` = 外层未压缩 tar（内含 `index.json` + `layers/NNNNNN.<name>.tar.gz` + 可选 `blobs/`）。
 
 - 规范文档：[docs/image-spec.md](docs/image-spec.md)，它是镜像格式的**单一事实来源**。
 - 任何格式改动必须**先改规范、再改代码**，且只允许通过 `specVersion` 做不兼容升级。
@@ -222,7 +222,7 @@ CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -o boxli-darwin-arm64 .
 ## 当前阶段：v0.6.0（真机验收 + 审计已完成）
 
 阶段 0 已完成：目录骨架、`go.mod`、文档、占位包，并已发布 `v0.1.0` 被 pkg.go.dev 收录。
-阶段 1 / 阶段 2 已完成：镜像格式、运行时、boot/shim 体系、`boxli run/stop/ps/rm` 端到端（见下）。
+阶段 1 / 阶段 2 已完成：镜像格式、运行时、boot/shim 体系、`licore run/stop/ps/rm` 端到端（见下）。
 阶段 3 已完成：网络/卷/资源/CLI/Hub 五个并行模块合并入 main（v0.3.0）。
 阶段 4 已完成：把网络/卷/资源参数真正作用到容器上（v0.4.0）。
 
@@ -230,7 +230,7 @@ CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -o boxli-darwin-arm64 .
 
 - **cgroup 限额真正生效**：cgroups v2 下 `cgroup.subtree_control` 未开启 `cpu memory pids`
   时子组限额文件不可写、写入被静默忽略；现由 `internal/resource` 在 `Setup` 前显式开启控制器。
-- **`boxli exec` 真正进入全部命名空间**：纯 Go 无法 `setns(CLONE_NEWNS)`（Go issue #9091），
+- **`licore exec` 真正进入全部命名空间**：纯 Go 无法 `setns(CLONE_NEWNS)`（Go issue #9091），
   改由可选 cgo 组件 `internal/execns` 在单线程子进程中完成 setns + execve；纯 Go 构建走 stub。
 - **卷 `:ro` 真正只读**：bind 挂载后补 `MS_REMOUNT|MS_BIND|MS_RDONLY`，否则 `:ro` 形同虚设。
 - **同名容器并发创建原子化**：名字唯一性从"扫描后创建"（TOCTOU）改为 `O_EXCL` 锁文件；
@@ -242,8 +242,8 @@ CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -o boxli-darwin-arm64 .
   可复现脚本：[docs/verify-root.sh](docs/verify-root.sh) + [docs/verify-root.md](docs/verify-root.md)。
 
 **阶段 5 已完成（v0.5.0）**：消除"半成品"——
-- **`boxli build` 真正接线**：从"只输出构建计划"改为真正调用 `build.Build()` 构造
-  `.boxli` 镜像并自动 `boxli pull` 导入本地 store；支持 `-t/--tag`、`-f/--file`、
+- **`licore build` 真正接线**：从"只输出构建计划"改为真正调用 `build.Build()` 构造
+  `.licore` 镜像并自动 `licore pull` 导入本地 store；支持 `-t/--tag`、`-f/--file`、
   构建上下文、`FROM scratch`。
 - **`compose up / scale`**：从占位改为经 `engine.Run` 真实创建容器 / 扩缩副本
   （boxfile/build 服务就地构建并导入）。
@@ -255,28 +255,28 @@ CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -o boxli-darwin-arm64 .
   审计见 [docs/audit-v0.5.0.md](docs/audit-v0.5.0.md)。
 
 **阶段 4 已完成（v0.4.0）**：把阶段 3 合并的参数真正作用到容器上——
-- **网络接入**：`boxli run` 启动时创建 veth pair，宿主端进网桥、容器端进容器
+- **网络接入**：`licore run` 启动时创建 veth pair，宿主端进网桥、容器端进容器
   netns；`-p` NAT 规则绑定到容器 IP；容器内 DNS 指向网桥网关（resolv.conf
   + hosts）。装配前移到启动前（engine 先分配 IP + 实化 NAT，runtime fork 后
   装配 veth）。
 - **卷接入**：`-v` 在容器 mount namespace 里于 pivot_root 之前 bind 进
   rootfs 目标路径；`:ro` 只读标记生效；匿名卷自动创建（anon_<id>）。
 - **资源接入**：容器 init fork 后其 PID 写入对应 cgroups v2 组
-  `cgroup.procs`，CPU/内存/pids/io 限制在容器生命周期内生效；`boxli rm`
+  `cgroup.procs`，CPU/内存/pids/io 限制在容器生命周期内生效；`licore rm`
   清理 cgroup。
-- **`boxli exec`**：setns 进入运行中容器的命名空间执行命令，支持 `-i`
+- **`licore exec`**：setns 进入运行中容器的命名空间执行命令，支持 `-i`
   `-t`（PTY）`-e` `-w` `-u`；需 root（CAP_SYS_ADMIN）。
-- **`boxli hub serve`**：自建分发服务前台启动（--port/--data-dir/--storage
+- **`licore hub serve`**：自建分发服务前台启动（--port/--data-dir/--storage
   local|s3），JWT 鉴权，Ctrl+C 优雅关闭；login/push/pull/search 端到端可跑。
 
 > 特权路径（veth/nft、cgroup 写入、setns、exec）需 root；非 root 沙箱以
 > runbook 记录验收步骤（docs/e2e.md）、审计结果见 docs/audit-v0.4.0.md。
 
-**阶段 2 已收官**：`boxli run` / `boxli stop` / `boxli ps` / `boxli rm` 整合完成，冻结接口确立（见下节）。
+**阶段 2 已收官**：`licore run` / `licore stop` / `licore ps` / `licore rm` 整合完成，冻结接口确立（见下节）。
 
-**阶段 1 已完成**：`.boxli` 镜像格式定义（docs/image-spec.md）、cobra CLI 骨架、`internal/image` 清单解析器、`internal/store` 落地存储、`boxli pull` 本地 `.boxli` 文件支持（`boxli run` / `ps` / `exec` / `boot` / `shutdown` 为骨架占位，明确返回未实现）。
+**阶段 1 已完成**：`.licore` 镜像格式定义（docs/image-spec.md）、cobra CLI 骨架、`internal/image` 清单解析器、`internal/store` 落地存储、`licore pull` 本地 `.licore` 文件支持（`licore run` / `ps` / `exec` / `boot` / `shutdown` 为骨架占位，明确返回未实现）。
 
-**阶段 2 进行中**：Linux 原生运行时 spike 已完成——`internal/runtime`（native_linux）实现纯 Go 的 namespace + pivot_root 容器（rootless 自动 user namespace），`boxli init`（隐藏命令）为容器 1 号进程入口，`boxli dev-run`（隐藏命令）为开发/基准入口；实测每容器 ≈ 2.3 MiB，报告见 [docs/runtime-benchmark.md](docs/runtime-benchmark.md)。`internal/storage` 层解包器已完成——`UnpackFile` 内容寻址解包（layers/sha256/<hex>/fs），`MergeLayers` 按序合并（whiteout/opaque 删除语义、符号链接逃逸防护、设备节点与 setuid 剥离、并发安全）；测试覆盖路径逃逸、重复条目、损坏 gzip、opaque 符号链接防护等场景。`boxli images` 已完成——`store.ListImages` 扫描 state.json（损坏条目跳过并告警），输出 REPOSITORY/TAG/ARCH/LAYERS/SIZE/CREATED 按导入时间倒序，支持 `-q` 与 `--format` Go 模板，空 store 友好提示且退出码 0。boot/shim 体系已完成——`<root>/containers/<id>/` 状态目录（config.json + runtime.json + stopped-by-user 标记）为 run/boot/shim 共用地基；`internal/shim` 为每容器生命周期持有者（Reexec 重执行 + setsid 脱终端 + container.log，restart 策略循环与退避重启）；`internal/boot.StartAll` 实现 `boxli boot` 一次性扫描拉起（策略矩阵 + 停止标记 + 幂等防重）；`internal/service` 管理 systemd unit（enable/disable/status，无 systemd 或无权限时明确提示并给出 sudo 手动命令）；`boxli shutdown` 经 SIGTERM shim 优雅停机；首次使用引导接入真实 boot enable。剩余：`boxli run` / `boxli stop` / `boxli ps` / `boxli rm` 整合已完成（阶段 2 收官）。`internal/engine` 为一次 run 的编排层（镜像查找 → 每层解包 → rootfs 合并 → 容器状态落盘 → 前台持有或后台 fork shim），CLI 只做参数绑定；`boxli run` 默认前台 stdio 直连、Ctrl+C 经 StopCh 转发容器、退出码透传 shell，`-d` 后台 fork shim 并打印容器 ID；`--name` 缺省自动生成 `adjective_animal` 式名字并去重；`-p`/`-v`/`--memory`/`--cpus`/`--pids-limit` 已解析并记入容器配置、运行时忽略并 `slog.Warn`（阶段 3 落地）。`boxli stop` 先写 `stopped-by-user` 标记再 SIGTERM shim，超时强杀并补写终态，已停止容器幂等；默认宽限为 `shim.GraceHold+5s`，小于该值会与 shim 写终态竞态导致退出码丢失。`boxli ps` 默认仅列运行中容器，`-a` 含已停止，`-q` 只出 ID，状态列区分 Up/Exited/Created 并标注 `user-stopped`。`boxli rm` 删除已停止容器整目录（含该容器独占的 rootfs，共享层缓存保留），运行中拒绝并提示先 stop，`-f` 先停再删。另修复 `boot.PidAlive` 真实缺陷：僵尸进程对 `signal 0` 仍探活成功，僵死 shim 会被 boot 误判为“已在运行”而永不重启，现读 `/proc/<pid>/stat` 判僵尸态。剩余（阶段 3）：`boxli exec`、资源限制（memory/cpus/pids）实际生效、`-p` 端口映射与 `-v` 卷挂载、`internal/network` 与 `internal/resource`。
+**阶段 2 进行中**：Linux 原生运行时 spike 已完成——`internal/runtime`（native_linux）实现纯 Go 的 namespace + pivot_root 容器（rootless 自动 user namespace），`licore init`（隐藏命令）为容器 1 号进程入口，`licore dev-run`（隐藏命令）为开发/基准入口；实测每容器 ≈ 2.3 MiB，报告见 [docs/runtime-benchmark.md](docs/runtime-benchmark.md)。`internal/storage` 层解包器已完成——`UnpackFile` 内容寻址解包（layers/sha256/<hex>/fs），`MergeLayers` 按序合并（whiteout/opaque 删除语义、符号链接逃逸防护、设备节点与 setuid 剥离、并发安全）；测试覆盖路径逃逸、重复条目、损坏 gzip、opaque 符号链接防护等场景。`licore images` 已完成——`store.ListImages` 扫描 state.json（损坏条目跳过并告警），输出 REPOSITORY/TAG/ARCH/LAYERS/SIZE/CREATED 按导入时间倒序，支持 `-q` 与 `--format` Go 模板，空 store 友好提示且退出码 0。boot/shim 体系已完成——`<root>/containers/<id>/` 状态目录（config.json + runtime.json + stopped-by-user 标记）为 run/boot/shim 共用地基；`internal/shim` 为每容器生命周期持有者（Reexec 重执行 + setsid 脱终端 + container.log，restart 策略循环与退避重启）；`internal/boot.StartAll` 实现 `licore boot` 一次性扫描拉起（策略矩阵 + 停止标记 + 幂等防重）；`internal/service` 管理 systemd unit（enable/disable/status，无 systemd 或无权限时明确提示并给出 sudo 手动命令）；`licore shutdown` 经 SIGTERM shim 优雅停机；首次使用引导接入真实 boot enable。剩余：`licore run` / `licore stop` / `licore ps` / `licore rm` 整合已完成（阶段 2 收官）。`internal/engine` 为一次 run 的编排层（镜像查找 → 每层解包 → rootfs 合并 → 容器状态落盘 → 前台持有或后台 fork shim），CLI 只做参数绑定；`licore run` 默认前台 stdio 直连、Ctrl+C 经 StopCh 转发容器、退出码透传 shell，`-d` 后台 fork shim 并打印容器 ID；`--name` 缺省自动生成 `adjective_animal` 式名字并去重；`-p`/`-v`/`--memory`/`--cpus`/`--pids-limit` 已解析并记入容器配置、运行时忽略并 `slog.Warn`（阶段 3 落地）。`licore stop` 先写 `stopped-by-user` 标记再 SIGTERM shim，超时强杀并补写终态，已停止容器幂等；默认宽限为 `shim.GraceHold+5s`，小于该值会与 shim 写终态竞态导致退出码丢失。`licore ps` 默认仅列运行中容器，`-a` 含已停止，`-q` 只出 ID，状态列区分 Up/Exited/Created 并标注 `user-stopped`。`licore rm` 删除已停止容器整目录（含该容器独占的 rootfs，共享层缓存保留），运行中拒绝并提示先 stop，`-f` 先停再删。另修复 `boot.PidAlive` 真实缺陷：僵尸进程对 `signal 0` 仍探活成功，僵死 shim 会被 boot 误判为“已在运行”而永不重启，现读 `/proc/<pid>/stat` 判僵尸态。剩余（阶段 3）：`licore exec`、资源限制（memory/cpus/pids）实际生效、`-p` 端口映射与 `-v` 卷挂载、`internal/network` 与 `internal/resource`。
 
 ### 阶段 3 并行模块（v0.3.0 已合并收官）
 
@@ -284,20 +284,20 @@ CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -o boxli-darwin-arm64 .
 
 | 分支 | 合并 commit | 落地内容 |
 | --- | --- | --- |
-| `feat/network` | `5571467` | `internal/network`（bridge / veth / 端口 NAT / DNS / netlink 高层封装）+ `boxli network` 命令树；`boxli run` 接入 `--network/--ip` 与 `-p` 端口映射 |
-| `feat/volume` | `df140b8` | `internal/storage/volume`（驱动 / 命名/匿名卷 / 配额 / tmpfs / snapshot）+ `boxli volume` 命令；`boxli run` 的 `-v` 卷落盘 |
-| `feat/resource` | `92817c7` | `internal/resource`（cgroup / CPU / 内存 / PID / 加速器直通）+ `boxli resource`、`boxli stats`、`boxli update`；`boxli run` 接入 `--memory*`/`--cpus`/`--pids-limit`/`--cpuset`/`--blkio`/`--storage`/`--network-bandwidth`/`--gpu`/`--npu` |
+| `feat/network` | `5571467` | `internal/network`（bridge / veth / 端口 NAT / DNS / netlink 高层封装）+ `licore network` 命令树；`licore run` 接入 `--network/--ip` 与 `-p` 端口映射 |
+| `feat/volume` | `df140b8` | `internal/storage/volume`（驱动 / 命名/匿名卷 / 配额 / tmpfs / snapshot）+ `licore volume` 命令；`licore run` 的 `-v` 卷落盘 |
+| `feat/resource` | `92817c7` | `internal/resource`（cgroup / CPU / 内存 / PID / 加速器直通）+ `licore resource`、`licore stats`、`licore update`；`licore run` 接入 `--memory*`/`--cpus`/`--pids-limit`/`--cpuset`/`--blkio`/`--storage`/`--network-bandwidth`/`--gpu`/`--npu` |
 | `feat/cli` | `750ec04` | `internal/cli` 新命令（tag/commit/save/load/export/import/compose/dev/build/doctor/lint/scaffold/completion）+ `internal/build`、`internal/compose`、`internal/dev`、`internal/doctor`、`internal/scaffold` |
-| `feat/hub` | `eb88154` | `hub/`（blob 存储 + JWT 鉴权 HTTP API + 客户端 Client）；`boxli login/pull/push/search` 已接入 `hub.Client`（`0c265c9`） |
+| `feat/hub` | `eb88154` | `hub/`（blob 存储 + JWT 鉴权 HTTP API + 客户端 Client）；`licore login/pull/push/search` 已接入 `hub.Client`（`0c265c9`） |
 
-Hub 分发命令说明：`boxli login` 向 Hub 换取令牌并缓存到 `<数据目录>/hub/auth.json`
-（绑定 Hub 地址）；`boxli pull NAME:VERSION`、`boxli push NAME:VERSION file.boxli`、
-`boxli search QUERY` 复用该令牌。Hub 地址按 `--hub` > `$BOXLI_HUB` > `http://127.0.0.1:3727`
-顺序解析。`boxli pull ./x.boxli` 仍保留本地文件导入语义。
+Hub 分发命令说明：`licore login` 向 Hub 换取令牌并缓存到 `<数据目录>/hub/auth.json`
+（绑定 Hub 地址）；`licore pull NAME:VERSION`、`licore push NAME:VERSION file.licore`、
+`licore search QUERY` 复用该令牌。Hub 地址按 `--hub` > `$LICORE_HUB` > `http://127.0.0.1:3727`
+顺序解析。`licore pull ./x.licore` 仍保留本地文件导入语义。
 
 ## 冻结接口（阶段 2 收官）
 
-以下接口自 `boxli run` 端到端跑通（阶段 2 收官）起**冻结**：签名、语义与哨兵错误均视为稳定契约。
+以下接口自 `licore run` 端到端跑通（阶段 2 收官）起**冻结**：签名、语义与哨兵错误均视为稳定契约。
 多模块并行开发期间，**修改任一冻结接口必须先提 issue 讨论**，说明动机、兼容性影响与迁移方案，
 达成一致后再动代码；禁止在业务分支里顺手改签名。只读使用不受限制。
 
@@ -361,16 +361,16 @@ type ExecOptions struct {
 }
 ```
 
-- `Exec` 由 `boxli exec` 调用；非 Linux 后端提供同签名 stub（返回 ErrUnsupported）。
-- 网络/卷/资源装配通过内部 `BOXLI_NET_*` / `BOXLI_MOUNT_*` / `BOXLI_CGROUP_ID` 环境变量
-  从父进程（engine/shim）传给容器 init，`envWithoutBoxli` 统一剥离，不经用户命令行。
+- `Exec` 由 `licore exec` 调用；非 Linux 后端提供同签名 stub（返回 ErrUnsupported）。
+- 网络/卷/资源装配通过内部 `LICORE_NET_*` / `LICORE_MOUNT_*` / `LICORE_CGROUP_ID` 环境变量
+  从父进程（engine/shim）传给容器 init，`envWithoutLiCore` 统一剥离，不经用户命令行。
 - `runtime` 新增跨平台辅助：`NetEnv`、`ResolveNetEnv`、`MountEnv`、`CgroupEnv`（供 engine/shim）。
 
 ### 二、Store（`internal/store`）
 
 ```go
 // 数据目录
-func Open(root string) (*Store, error) // root 为空 → $BOXLI_HOME → ~/.boxli
+func Open(root string) (*Store, error) // root 为空 → $LICORE_HOME → ~/.licore
 
 // 容器状态目录（config.json + runtime.json + stopped-by-user + rootfs）
 func NewContainerID() (string, error)
@@ -444,7 +444,7 @@ ErrUnsafeLayer, ErrIndexTooLarge
 - **没有 `ParseIndex`**：`index.json` 的解析入口是 `ParseManifest`（早期草案名，已废弃）。
 - 任何格式改动必须**先改 `docs/image-spec.md`、再改代码**，且只允许通过 `specVersion` 做不兼容升级。
 - `OpenFile` 只做清单类/结构类/config blob 校验；层全量摘要由 `VerifyLayers` 重算（流式，内存 O(1)）。
-  `boxli run` 走的是"信任 pull 期已校验"，不重复 `VerifyLayers`。
+  `licore run` 走的是"信任 pull 期已校验"，不重复 `VerifyLayers`。
 
 ### 四、Storage（`internal/storage`）
 
@@ -470,7 +470,7 @@ ErrCorruptLayer, ErrDuplicateEntry, ErrBadDigest, ErrLayerMissingLocal
 - `UnpackFile` 是**差异视图**：whiteout 文件原样保留，删除语义由 `MergeLayers` 应用；两者职责不可混淆。
 - `MergeLayers` 的 `targetDir` 可以不存在（内部 MkdirAll）；合并是"叠加拷贝"，同一容器重复合并不幂等，
   调用方须保证目标是全新目录。
-- 层缓存**跨容器共享、永不随容器删除而回收**（引用计数是阶段 3 项）；`boxli rm` 只删容器目录。
+- 层缓存**跨容器共享、永不随容器删除而回收**（引用计数是阶段 3 项）；`licore rm` 只删容器目录。
 
 ### 五、Shim（`internal/shim`）
 
@@ -490,9 +490,9 @@ type Options struct {
 }
 
 // 常量
-EnvMarker    = "BOXLI_SHIM"
-EnvStoreRoot = "BOXLI_STORE_ROOT"
-EnvContainer = "BOXLI_CONTAINER"
+EnvMarker    = "LICORE_SHIM"
+EnvStoreRoot = "LICORE_STORE_ROOT"
+EnvContainer = "LICORE_CONTAINER"
 GraceHold    = 10 * time.Second // 导出：stop 的宽限必须大于它
 
 // 哨兵
@@ -502,7 +502,7 @@ ErrShimNotRequested
 - `GraceHold` 是**跨模块契约**：`engine.Stop` 的默认超时派生为 `GraceHold+5s`。任何调小它的改动
   都会重新引入"stop 抢在 shim 写终态前强杀导致退出码丢失"的竞态，必须同步评估调用方。
 - shim 是 `runtime.json` 的唯一写方（含前台模式下由 CLI 进程充当 shim 的场景）。
-- 重启退避序列固定为 1s/2s/4s/8s/30s（封顶 30s）；改动需同步 `boxli boot` 的幂等判定窗口评估。
+- 重启退避序列固定为 1s/2s/4s/8s/30s（封顶 30s）；改动需同步 `licore boot` 的幂等判定窗口评估。
 
 ## 并行开发约定
 
