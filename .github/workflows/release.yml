@@ -185,19 +185,29 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          # 只从 **annotated tag** 的 message 取发布说明。
+          # 从 **annotated tag** 的 message 取发布说明；轻量 tag 回落模板。
           #
-          # 不能用"%(contents) 是否为空"来判断：对轻量 tag，git 会回落到
-          # 该 tag 指向的 commit message，于是"空则用模板"的分支永远不触发，
-          # Release notes 会变成一条 commit 日志（实测确认）。
-          # git cat-file -t 对 annotated tag 返回 "tag"，对轻量 tag 返回
-          # "commit"，据此区分才可靠。
+          # 两个坑，都是实测踩出来的：
+          #
+          # 1. 不能用"%(contents) 是否为空"判断：对轻量 tag，git 会回落到该 tag
+          #    指向的 commit message，于是"空则用模板"的分支永不触发，notes 会
+          #    变成一条 commit 日志。
+          #
+          # 2. **不能只依赖 checkout 之后的本地 tag 对象**。actions/checkout
+          #    检出后会用 commit 覆盖同名 tag：
+          #      git fetch --no-tags ... origin +<sha>:refs/tags/v0.7.1
+          #      t [tag update]  <sha> -> v0.7.1
+          #    于是 annotated tag 在本地变成了轻量 tag，cat-file -t 返回
+          #    "commit"，v0.7.1 首次发布时 notes 因此退化成了模板。
+          #    所以这里先强制把真正的 tag 对象取回来，再判断类型。
+          git fetch -q --force --depth=1 origin "+refs/tags/$TAG:refs/tags/$TAG" 2>/dev/null || true
+
           msg=""
           if [ "$(git cat-file -t "$TAG" 2>/dev/null || echo none)" = "tag" ]; then
             msg="$(git tag -l --format='%(contents)' "$TAG" | sed '/^$/d' || true)"
           fi
           if [ -z "$msg" ]; then
-            echo "tag $TAG 无发布说明（轻量 tag 或 message 为空），使用模板"
+            echo "tag $TAG 无发布说明（轻量 tag，或 fetch 后仍取不到 annotated 对象），使用模板"
             msg="LiCore ${TAG}
 
           各平台二进制与 SHA256SUMS 见下方资产。"
