@@ -6,6 +6,30 @@
 
 LiCore 是一个用 Go 编写的**轻量级容器引擎**，使用场景类似 Docker，但**不兼容 Docker / OCI，完全自研生态**：自研镜像格式、自研分发方式、自研运行时与网络。目标平台为 Linux 服务器、Android（有 Root / 无 Root）、macOS；支持多 CPU 架构；引擎常驻内存目标 **10–20 MiB**。
 
+## 项目历史
+
+| 版本区间 | 名称 | 说明 |
+| --- | --- | --- |
+| v0.1.0 ~ v0.6.1 | **Boxli** | 项目早期名称。模块路径 `github.com/LiStudioorg/boxli`，二进制 `boxli`，镜像后缀 `.boxli`，数据目录 `~/.boxli`，环境变量 `BOXLI_*`。 |
+| v0.7.0 起 | **LiCore** | 现用名称。模块路径 `github.com/LiStudioorg/licore`，二进制 `licore`，镜像后缀 `.licore`，数据目录 `~/.licore`，环境变量 `LICORE_*`。 |
+
+- **改名原因**：品牌统一。
+- **v0.7.0 是 LiCore 的首个版本**，也是 Android（有 Root）支持完整交付的版本。
+- **无数据迁移**：改名时项目尚未正式发布、无用户，因此**不提供** `~/.boxli` →
+  `~/.licore` 的自动迁移，也**不保留**旧路径 / 旧环境变量的兼容层。改名靠的是一次性
+  全仓库替换，不是运行时兼容分支。
+- **历史 tag（v0.1.0 ~ v0.6.1）保留**，仍可拉取；旧 commit 的 author 与内容一律
+  不改写。GitHub 旧仓库地址自动重定向到新地址。
+- **文档中残留的旧名**：本文件的阶段记录（下文）与 `docs/` 下的历史验收/审计报告
+  写于改名前后不同时期，其中的名称以当时为准。除"指向本机工作目录的绝对路径"
+  外，仓库内不应再出现旧名，CI/评审可用下列命令核查：
+
+  ```bash
+  grep -rn 'boxli\|Boxli\|BOXLI' --include='*.go' --include='*.md' --include='*.sh' .
+  # 期望仅剩形如 /home/.../work/boxli 的本机路径（若有），其余应为 0
+  ```
+
+
 ## 核心约定
 
 - **语言**：Go，纯 Go，**不使用 CGO**（`CGO_ENABLED=0`）。**唯一例外**：`internal/execns` 的 setns 进入容器挂载命名空间必须用 cgo（纯 Go 无法 setns(CLONE_NEWNS)，见 Go issue #9091）；该组件为可选构建（`-tags nocgo_exec` 走 stub），其余所有代码保持纯 Go。
