@@ -26,6 +26,40 @@ package execns
 #include <sys/wait.h>
 #include <sys/types.h>
 #include <errno.h>
+#include <string.h>
+
+// execnsWriteStr 直写 fd，不用 stdio：子进程此刻可能已 dup2 过 stdio，
+// 且 write 是 async-signal-safe 的裸系统调用，不会因继承父进程缓冲而丢字。
+static void execnsWriteStr(int fd, const char* s) {
+	size_t n = 0;
+	while (s[n] != '\0') n++;
+	ssize_t w = write(fd, s, n);
+	(void)w;
+}
+
+// execnsFail 报告失败原因后退出。
+//
+// 这些退出码只在**目标命令尚未 exec 成功**时使用，因此不可能与目标命令
+// 自身的退出码混淆。此前所有内部失败都只 _exit(128..138) 而不发一言，
+// 用户看到的是"命令凭空失败、没有任何解释"（例如 exec 一个容器里不存在
+// 的二进制，只会拿到 134）——这正是本函数要消除的问题。
+//
+// 约定沿用 shell / docker 的语义：127 = 找不到可执行文件，126 = 找到了但
+// 无法执行；128 以上留给内部失败。
+static void execnsFail(int code, const char* stage, const char* target, int err) {
+	execnsWriteStr(2, "licore: exec: ");
+	execnsWriteStr(2, stage);
+	if (target != NULL && target[0] != '\0') {
+		execnsWriteStr(2, ": ");
+		execnsWriteStr(2, target);
+	}
+	if (err != 0) {
+		execnsWriteStr(2, ": ");
+		execnsWriteStr(2, strerror(err));
+	}
+	execnsWriteStr(2, "\n");
+	_exit(code);
+}
 
 // execnsFork 进入 namespace 后 exec 目标命令。子进程内 C 单线程 setns。
 // 返回：>=0 = 子进程 pid；<0 = -(errno)。
@@ -60,30 +94,30 @@ static long execnsFork(
 
 	// —— 中间进程（C 单线程上下文）——
 	for (int i = 0; i < nsCount; i++) {
-		if (setns(nsFds[i], 0) != 0) { _exit(128); }   // nstype=0 自适应
+		if (setns(nsFds[i], 0) != 0) { execnsFail(128, "进入命名空间失败", NULL, errno); }
 	}
 
 	// setns(pid) 之后再 fork：孙进程才真正位于目标 PID namespace。
 	pid_t leaf = fork();
-	if (leaf < 0) { _exit(135); }
+	if (leaf < 0) { execnsFail(135, "fork 失败", NULL, errno); }
 	if (leaf > 0) {
 		// 中间进程：等待孙进程并原样回传退出状态。
 		int st = 0;
 		while (waitpid(leaf, &st, 0) < 0) {
 			if (errno == EINTR) continue;
-			_exit(136);
+			execnsFail(136, "等待子进程失败", NULL, errno);
 		}
 		if (WIFEXITED(st))   _exit(WEXITSTATUS(st));
 		if (WIFSIGNALED(st)) { signal(WTERMSIG(st), SIG_DFL); raise(WTERMSIG(st)); _exit(137); }
-		_exit(138);
+		execnsFail(138, "子进程状态异常", NULL, 0);
 	}
 
 	// —— 孙进程：目标 PID namespace 的成员，可安全创建线程 ——
-	if (workdir && workdir[0] && chdir(workdir) != 0) { _exit(129); }
-	if (useUid || useGid) { if (setgroups(0, NULL) != 0) { _exit(130); } }
-	if (useGid && setgid(gid) != 0) { _exit(131); }
-	if (useUid && setuid(uid) != 0) { _exit(132); }
-	if (dup2(inFd, 0) < 0 || dup2(outFd, 1) < 0 || dup2(errFd, 2) < 0) { _exit(133); }
+	if (workdir && workdir[0] && chdir(workdir) != 0) { execnsFail(129, "进入工作目录失败", workdir, errno); }
+	if (useUid || useGid) { if (setgroups(0, NULL) != 0) { execnsFail(130, "setgroups 失败", NULL, errno); } }
+	if (useGid && setgid(gid) != 0) { execnsFail(131, "setgid 失败", NULL, errno); }
+	if (useUid && setuid(uid) != 0) { execnsFail(132, "setuid 失败", NULL, errno); }
+	if (dup2(inFd, 0) < 0 || dup2(outFd, 1) < 0 || dup2(errFd, 2) < 0) { execnsFail(133, "重定向标准流失败", NULL, errno); }
 
 	// TTY 会话：仅当 stdin 是终端（openpty 的从端）时才建。
 	// 必须 setsid() 之后再 TIOCSCTTY，否则该终端不会成为本进程的**控制终端**，
@@ -97,7 +131,15 @@ static long execnsFork(
 	}
 
 	execve(argv[0], argv, envp);
-	_exit(134);
+	// execve 只在失败时返回。此前这里直接 _exit(134)：目标二进制在容器里
+	// 不存在时，用户只会看到一个无来由的 134，既没有命令名也没有原因。
+	// ENOENT → 127（命令未找到），其余（EACCES/ENOEXEC 等）→ 126（不可执行），
+	// 与 shell、docker exec 的约定一致。
+	{
+		int e = errno;
+		int code = (e == ENOENT) ? 127 : 126;
+		execnsFail(code, "无法执行", argv[0], e);
+	}
 }
 
 // execnsWait 等待子进程，返回退出码（信号死亡 128+signum）；失败返回 -1。
