@@ -1,0 +1,160 @@
+# Copyright (C) 2026 LiStudioorg
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# LiCore 持续集成：格式检查 → 静态检查 → 竞态测试 → 全平台交叉编译。
+#
+# 设计要点：
+#   - Go 版本必须 >= go.mod 的 `go` 指令（当前 1.27.1），否则工具链会直接
+#     拒绝编译（"go.mod requires go >= X"）。升级 go.mod 时同步改此处。
+#   - 交叉编译矩阵覆盖全部声明支持的目标平台；Android cgo 版单独一个 job，
+#     因为它需要配置 NDK 工具链，与纯 Go 目标的前置条件不同。
+#   - 所有 job 都固定 runner 与 Go 版本，避免"某天突然变红"。
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# 同一分支的连续推送只保留最新一次运行。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # 与 go.mod 的 `go` 指令保持一致；低于它会构建失败。
+  GO_VERSION: "1.27.1"
+
+jobs:
+  # 格式 / 静态检查 / 竞态测试：三者都快，合并成一个 job 省启动开销。
+  test:
+    name: 格式与测试
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: 检查格式（未格式化则失败）
+        run: |
+          unformatted="$(gofmt -l $(git ls-files '*.go'))"
+          if [ -n "$unformatted" ]; then
+            echo "以下文件未格式化，请运行 gofmt -w："
+            echo "$unformatted"
+            exit 1
+          fi
+          echo "gofmt 干净"
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: 竞态测试
+        # -race 需要 cgo，ubuntu runner 自带 gcc，无需额外安装。
+        run: go test -race ./... -count=1
+
+  # 8 平台纯 Go 交叉编译。--no-cgo 目标统一带 nocgo_exec 标签走 stub。
+  cross:
+    name: 交叉编译 ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: linux, goarch: arm }
+          - { goos: linux, goarch: "386" }
+          - { goos: linux, goarch: riscv64 }
+          - { goos: android, goarch: arm64 }
+          - { goos: darwin, goarch: amd64 }
+          - { goos: darwin, goarch: arm64 }
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: 构建
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          go build -tags nocgo_exec -o /dev/null .
+
+  # Android cgo 构建：exec 需要它，因此必须单独验证能编过。
+  # NDK 用 runner 预装版本，不写死路径，避免 NDK 版本升级导致 CI 变红。
+  android-cgo:
+    name: Android cgo 构建（exec 可用）
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: 定位 NDK 编译器
+        id: ndk
+        run: |
+          # GitHub 的 ubuntu runner 预装 Android SDK/NDK。
+          ndk_dir="$(ls -d "${ANDROID_NDK_LATEST_HOME:-}" 2>/dev/null || true)"
+          if [ -z "$ndk_dir" ]; then
+            ndk_dir="$(ls -d /usr/local/lib/android/sdk/ndk/* 2>/dev/null | sort -V | tail -1 || true)"
+          fi
+          if [ -z "$ndk_dir" ]; then
+            echo "未找到 Android NDK，无法验证 cgo 构建" >&2
+            exit 1
+          fi
+          cc="$ndk_dir/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang"
+          if [ ! -x "$cc" ]; then
+            echo "NDK 中找不到编译器：$cc" >&2
+            exit 1
+          fi
+          echo "使用 NDK：$ndk_dir"
+          echo "cc=$cc" >> "$GITHUB_OUTPUT"
+
+      - name: 构建（CGO_ENABLED=1）
+        env:
+          GOOS: android
+          GOARCH: arm64
+          CGO_ENABLED: "1"
+          CC: ${{ steps.ndk.outputs.cc }}
+        run: |
+          go build -o /dev/null .
+
+  # 本机 cgo 构建：确保 internal/execns 在 linux/amd64 上也能编过并跑通测试。
+  linux-cgo:
+    name: Linux cgo 构建（exec 可用）
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: 构建
+        env:
+          CGO_ENABLED: "1"
+        run: go build -o /dev/null .
