@@ -88,18 +88,21 @@ func nftCheck() error {
 	return nil
 }
 
-// nftCreateTables 幂等创建 nft 表与两个链（post_nat=出口 NAT，pre_nat=DNAT）。
+// nftCreateTables 幂等创建 nft 表与三条链（post_nat=出口/回环 NAT，
+// pre_nat=外部进来流量的 DNAT，out_nat=宿主本机发起流量的 DNAT）。
 func nftCreateTables() error {
 	if err := nftCheck(); err != nil {
 		return err
 	}
 	// 表
 	_ = runNft("add", "table", "ip", "licore")
-	// 两个链
+	// 链：post_nat / pre_nat / out_nat
 	_ = runNft("add", "chain", "ip", "licore", "post_nat",
 		"{ type nat hook postrouting priority srcnat; policy accept; }")
 	_ = runNft("add", "chain", "ip", "licore", "pre_nat",
 		"{ type nat hook prerouting priority dstnat; policy accept; }")
+	_ = runNft("add", "chain", "ip", "licore", "out_nat",
+		"{ type nat hook output priority -100; policy accept; }")
 	return nil
 }
 
@@ -142,10 +145,18 @@ func (n *Network) applyPortRules() error {
 		if err := runNft(natMasqArgs(n.Subnet)...); err != nil {
 			return err
 		}
+		// 回环源伪装：与 out_nat 配套，缺一不可，见 natLoopbackMasqArgs 注释。
+		if err := runNft(natLoopbackMasqArgs(n.Subnet)...); err != nil {
+			return err
+		}
 	}
 	for _, e := range n.Endpoints {
 		for _, p := range e.Ports {
 			if err := n.addDnatRule(e, p); err != nil {
+				return err
+			}
+			// 同一映射在 out_nat 再挂一份，覆盖宿主本机发起的流量。
+			if err := runNft(dnatOutRuleArgs(e, p)...); err != nil {
 				return err
 			}
 		}
@@ -153,11 +164,26 @@ func (n *Network) applyPortRules() error {
 	return nil
 }
 
-// natMasqArgs 返回出口 NAT 的 nft 参数（add rule，语法与 nft -c 校验一致：
+// natMasqArgs 返回出口的 NAT 的 nft 参数（add rule，语法与 nft -c 校验一致：
 // `nft add rule ip licore post_nat ip saddr <subnet> masquerade`）。
 func natMasqArgs(subnet string) []string {
 	return []string{"add", "rule", "ip", "licore", "post_nat",
 		"ip", "saddr", subnet, "masquerade"}
+}
+
+// natLoopbackMasqArgs 返回**回环源地址**的 NAT 参数。
+//
+// 为什么需要那条规则：宿主上 `curl localhost:18080` 的数据包源地址是
+// 127.0.0.1。DNAT 把目的改成容器 IP 后，报文从网桥送出，容器看到的源地址
+// 仍是 127.0.0.1——而容器自己的 netns 里 127.0.0.0/8 是本地路由，回包因此
+// 发到容器**自己**的回环、永远回不到宿主。把源地址伪装成网桥 IP 后回包才
+// 正常返回。此规则与 out_nat 配套：只加 out_nat 时表现是"connection
+// timed out"（容器 lo DOWN 时假性可通，拉起 lo 后必然超时）。
+//
+// 目的网段限定在本子网，不影响容器访问外部 127.x 地址。
+func natLoopbackMasqArgs(subnet string) []string {
+	return []string{"add", "rule", "ip", "licore", "post_nat",
+		"ip", "saddr", "127.0.0.0/8", "ip", "daddr", subnet, "masquerade"}
 }
 
 // dnatRuleArgs 返回单条 DNAT 的 nft 参数（add rule：
@@ -172,10 +198,31 @@ func dnatRuleArgs(e *Endpoint, p *PortMapping) []string {
 		"dnat", "to", e.IP + ":" + strconv.Itoa(p.ContainerPort)}
 }
 
-// flushChains 清空 NAT 表的两条链（表或链不存在时幂等，为空时清空）。
+// dnatOutRuleArgs 返回**宿主本机发起**流量的 DNAT 规则（挂在 out_nat 即以
+// output hook 生效）。
+//
+// 为什么需要：prerouting 只处理**从网卡进来**的报文，本机进程（curl
+// localhost:8080、本机健康检查、浏览器点 127.0.0.1）走的根本是 output 路径。
+// 少这一条时宿主本机连自己的发布端口是 connection refused。限定只显示目的
+// 地址是回环段的流量，避免把"访问外部主机同端口"也误 DNAT 进容器。
+func dnatOutRuleArgs(e *Endpoint, p *PortMapping) []string {
+	proto := "tcp"
+	if p.Proto == ProtoUDP {
+		proto = "udp"
+	}
+	return []string{"add", "rule", "ip", "licore", "out_nat",
+		"ip", "daddr", "127.0.0.0/8",
+		proto, "dport", strconv.Itoa(p.HostPort),
+		"dnat", "to", e.IP + ":" + strconv.Itoa(p.ContainerPort)}
+}
+
+// flushChains 清空 NAT 表的三条链（表或链不存在时幂等，为空时清空）。
+// out_nat 必须一并清空：applyPortRules 重放时若只 flush 两条，宿主本机
+// DNAT 规则会随每次 run 无限堆叠。
 func (n *Network) flushChains() {
 	_ = runNft("flush", "chain", "ip", "licore", "post_nat")
 	_ = runNft("flush", "chain", "ip", "licore", "pre_nat")
+	_ = runNft("flush", "chain", "ip", "licore", "out_nat")
 }
 
 // deleteAllDnat 清空 pre_nat 链（在重放数据前调用，避免重复规则堆叠）。
